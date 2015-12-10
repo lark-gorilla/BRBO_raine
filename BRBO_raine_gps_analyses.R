@@ -27,6 +27,7 @@ final_out.Projected <- spTransform(final_out.Wgs, CRS=DgProj)
 plot(final_out.Projected)
 
 ### 3. Convert to LTRAJ
+dat$trip_id<-as.character(dat$trip_id) #for as.ltraj the -1 trip_id is still considered if trip_id is a factor
 
 trajectories <- as.ltraj(xy=data.frame(final_out.Projected@coords[,1],
                                        final_out.Projected@coords[,2]), date=as.POSIXct(dat$TrackTime, origin="1970/01/01", tz="GMT"), id=dat$trip_id, typeII = TRUE)   
@@ -35,7 +36,7 @@ trajectories <- as.ltraj(xy=data.frame(final_out.Projected@coords[,1],
 tt<-summary.ltraj(trajectories)
 trips<-tt$id
 head(trajectories[[1]])
-#plot(trajectories)
+plot(trajectories)
 
 ## I havent run these data data cleaning loops - think they only affect the odd point
 
@@ -77,18 +78,41 @@ for (t in 1:length(trips)){
   triplist <- rbind(triplist,uil)
 }
 
-hmm.2<-HMMFit(triplist[,1:2],nStates=3)		## fits a hidden markov model with 3 states - foraging and commuting and sleeping?
-states<-viterbi(hmm.2,triplist[,1:2])		## extracts the predicted states for each location fix using Viterbi's algorith from the HMM fit
-triplist$state2<-states$states
+hmm.3<-HMMFit(triplist[,1:2],nStates=3)		## fits a hidden markov model with 3 states - foraging and commuting and sleeping?
+states3<-viterbi(hmm.3,triplist[,1:2])		## extracts the predicted states for each location fix using Viterbi's algorith from the HMM fit
+triplist$state3<-states3$states
 
-final_out$hmm_all_trips<-0
+hmm.2<-HMMFit(triplist[,1:2],nStates=2)		## fits a hidden markov model with 3 states - foraging and commuting
+states2<-viterbi(hmm.2,triplist[,1:2])		## extracts the predicted states for each location fix using Viterbi's algorith from the HMM fit
+triplist$state2<-states2$states
+
+dat$hmm_all_trips2<-0
+dat$hmm_all_trips3<-0
 for(i in trips)
 {
-  final_out[final_out$trip_id==i,]$hmm_all_trips<-triplist[triplist$ID==i,]$state2
+  dat[dat$trip_id==i,]$hmm_all_trips2<-triplist[triplist$ID==i,]$state2
+  dat[dat$trip_id==i,]$hmm_all_trips3<-triplist[triplist$ID==i,]$state3
 } ## loop to match up correct trips in triplist and final_out
 
 
-
 ########## plot separation between foraging and commuting ##########
-plot(speed~rel.angle, data=triplist, type='p',col=triplist$state, pch=triplist$state)
-## Nice plot :)
+plot(speed~rel.angle, data=triplist, type='p',col=triplist$state2, pch=triplist$state2)
+
+plot(speed~rel.angle, data=triplist, type='p',col=triplist$state3, pch=triplist$state3)
+
+#### write data out
+
+write.csv(dat, "BRBO_raine_hmm.csv", quote=F, row.names=F)
+
+Trips.Wgs <- SpatialPoints(data.frame(dat$Longitude, dat$Latitude), proj4string=CRS("+proj=longlat"))
+
+Trips.Wgs<- SpatialPointsDataFrame(Trips.Wgs, data = data.frame(
+  trip_id=dat$trip_id, hmm_state=dat$hmm_all_trips2))
+# export with only 2 state hmm as more logical
+writeOGR(Trips.Wgs, layer="BRBO_raine_HMMstate", dsn="GIS", driver="ESRI Shapefile", verbose=TRUE, overwrite=T)
+# kml for online viewing, kill trip_id field to keep file <5mb for map upload
+Trips.Wgs$trip_id<-NULL
+setwd("~/grive/phd/analyses/BRBO_raine/GIS")
+writeOGR(Trips.Wgs, "BRBO_raine_HMMstate.kml", "GIS", driver="KML", overwrite_layer=T)
+
+
