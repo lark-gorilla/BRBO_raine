@@ -168,8 +168,102 @@ long_int_IDz<-ID_tdif[ID_tdif$TT_diff>3,]$ID # birds that are sampled at an inte
 
 dat<-dat[!dat$ID %in% long_int_IDz,] #remove em
 
-dat$dive<-0
+table(dat$TT_diff)
 
-  
+points(Latitude~Longitude, dat[dat$TT_diff>120,], col=3, cex=0.5, pch=3) # where are the > 120 gaps??
+
+dat$dive<-0
+dat[dat$TT_diff%in% (9:120),]$dive<-1 #saying dives occur from a min of 9 sec up to 2 mins
+
+write.csv(dat, "gannet_dat_tripsplit_dives.csv", quote=F, row.names=F) # write full tripsplit dataset
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# CONVERT TRIPS OBJECT TO TRAJECTORY OBJECT TO CALCULATE TURNING ANGLES ETC.
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# clean up the data a bit
+
+dat<-na.omit(dat)
+
+dat$trip_id<-as.character(dat$trip_id)
+
+dat<-dat[dat$TT_diff!=0,]
+### 1. project_data
+
+library(geosphere)
+
+mid_point<-data.frame(centroid(cbind(dat$Longitude, dat$Latitude)))
+final_out.Wgs <- SpatialPoints(data.frame(dat$Longitude, dat$Latitude), proj4string=CRS("+proj=longlat"))
+DgProj <- CRS(paste("+proj=laea +lon_0=", mid_point$lon, " +lat_0=", mid_point$lat, sep=""))
+final_out.Projected <- spTransform(final_out.Wgs, CRS=DgProj)
+#now we have projected coords for WHOLE dataset (rather than cols split)
+
+### 3. Convert to LTRAJ
+library(adehabitatLT)
+
+trajectories <- as.ltraj(xy=data.frame(final_out.Projected@coords[,1],
+                                       final_out.Projected@coords[,2]), date=as.POSIXct(dat$TrackTime, origin="1970/01/01", tz="GMT"), id=dat$trip_id, typeII = TRUE)   
+
+
+tt<-summary.ltraj(trajectories)
+trips<-tt$id
+head(trajectories[[1]])
+#plot(trajectories)
+
+## I havent run these data data cleaning loops - think they only affect the odd point
+
+### 4. Enumerate bogus data [>3 hr time lapse]
+#nonsense<-data.frame(trips, oddlocs=0)
+#for (t in 1:length(trips)){
+#x<-trajectories[[t]]
+#nonsense$oddlocs[nonsense$trips==trips[t]]<-dim(x[x$dt>10000,])[1]
+#}
+#nonsense
+
+### 5. Eliminate bogus data [>3 hr time lapse]
+### removes lines with a long time interval and NA for angle
+
+#for (t in 1:length(trips)){
+#x<-trajectories[[t]]
+#x<-x[!(x$dt>10000),]
+#x<-x[!is.na(x$rel.angle),]
+#trajectories[[t]]<-x
+#}
+
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# FIT SINGLE HMM TO ALL TRIPS
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#triplist<-list()					## causes error message in viterbi: "REAL() can only be applied to a 'numeric', not a 'list'
+triplist<-data.frame()
+for (t in 1:length(trips)){
+  uil<-trajectories[[t]]
+  uil<-uil[,c(6:7,10)]
+  uil$speed<-uil$dist/uil$dt
+  uil$dist<-NULL
+  uil$dt<-NULL
+  uil[is.na(uil)]<-0
+  uil$ID<-trips[[t]]
+  #triplist[[t]] <- uil
+  triplist <- rbind(triplist,uil)
+}
+
+hmm.2<-HMMFit(triplist[,1:2],nStates=3)		## fits a hidden markov model with 3 states - foraging and commuting and sleeping?
+states<-viterbi(hmm.2,triplist[,1:2])		## extracts the predicted states for each location fix using Viterbi's algorith from the HMM fit
+triplist$state2<-states$states
+
+dat$hmm_all_trips<-0
+for(i in trips)
+{
+  dat[dat$trip_id==i,]$hmm_all_trips<-triplist[triplist$ID==i,]$state2
+} ## loop to match up correct trips in triplist and final_out
+
+
+
+########## plot separation between foraging and commuting ##########
+plot(speed~rel.angle, data=triplist, type='p',col=triplist$state, pch=triplist$state)
+## Nice plot :)
+
   
   
