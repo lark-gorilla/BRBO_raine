@@ -115,4 +115,54 @@ Trips.Wgs$trip_id<-NULL
 setwd("~/grive/phd/analyses/BRBO_raine/GIS")
 writeOGR(Trips.Wgs, "BRBO_raine_HMMstate.kml", "GIS", driver="KML", overwrite_layer=T)
 
+## creating trip summary table ##
+library(geosphere)
+
+dat<-read.csv("~/grive/phd/analyses/BRBO_raine/BRBO_raine_hmm.csv", h=T)
+
+trip_distances<-data.frame(tripID=unique(dat$trip_id), Returns="na",
+                           max_dist=0, 
+                           tot_length=0, 
+                           tot_time=0, 
+                           foraging_time=0, flying_time=0, resting_time=0,
+                           dive_duration=0, dive_duration_sd=0,
+                           dives_per_hour=0)  	### create data frame for each trip
+
+trip_distances$Returns<-as.character(trip_distances$Returns)
+
+
+for (i in trip_distances$trip){
+  trip_distances[trip_distances$trip==i,3]<-max(dat[dat$trip_id==i,]$ColDist)/1000
+  trip_distances[trip_distances$trip==i,5]<-(max(dat[dat$trip_id==i,]$TrackTime)-min(dat[dat$trip_id==i,]$TrackTime))/3600
+  #trip_distances[trip_distances$trip==i,5]<-max(dat[dat$trip_id==i,]$ColDist)/1000
+  ## Calculate distances from one point to the next and total trip distance
+  x=dat[dat$trip_id==i,]
+  x$Dist=0
+  x$Dist[1]<-x$ColDist[1]/1000				### distance to first point is assumed a straight line from the nest/colony
+  for (p in 2:dim(x)[1]){
+    p1<-c(x$Longitude[p-1],x$Latitude[p-1])
+    p2<-c(x$Longitude[p],x$Latitude[p])
+    #x$Dist[p]<-pointDistance(p1,p2, lonlat=T, allpairs=FALSE)/1000			### no longer works in geosphere
+    x$Dist[p]<-distMeeus(p1,p2)/1000						### great circle distance according to Meeus, converted to km
+    
+  }
+  trip_distances[trip_distances$trip==i,4]<-sum(x$Dist)+(x$ColDist[p]/1000)	## total trip distance is the sum of all steps plus the dist from the nest of the last location - for non return trips this will be an underestimate
+  trip_distances[trip_distances$trip==i,2]<-as.character(unique(dat[dat$trip_id==i,]$Returns))
+  trip_distances[trip_distances$trip==i,9]<-mean(dat[dat$trip_id==i & dat$dive==1,]$TT_diff)
+  trip_distances[trip_distances$trip==i,10]<-sd(dat[dat$trip_id==i & dat$dive==1,]$TT_diff)
+  trip_distances[trip_distances$trip==i,11]<-(sum(dat[dat$trip_id==i,]$dive))/trip_distances[trip_distances$trip==i,5]
+}
+
+
+for(i in unique(trip_distances$tripID))
+{
+  trip_distances[trip_distances$tripID==i,6]<-(nrow(dat[dat$hmm_all_trips3==2 & dat$trip_id==as.character(i),]))/60
+  trip_distances[trip_distances$tripID==i,7]<-(nrow(dat[dat$hmm_all_trips3==3 & dat$trip_id==as.character(i),]))/60
+  trip_distances[trip_distances$tripID==i,8]<-(nrow(dat[dat$hmm_all_trips3==1 & dat$trip_id==as.character(i),]))/60
+  print(i)
+}
+
+write.csv(trip_distances, "~/grive/phd/analyses/BRBO_raine/BRBO_raine_summary.csv", quote=F, row.names=F) # write full tripsplit dataset
+
+
 

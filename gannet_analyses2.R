@@ -253,9 +253,26 @@ for (i in trip_distances$trip){
 
 write.csv(trip_distances, "gannet_dat_trip_summary.csv", quote=F, row.names=F) # write full tripsplit dataset
 
+## Have now completed HMM analyses so can update trip table with HMM results
 
+setwd("~/research/gannets")
 
+trip_distances<-read.csv("gannet_dat_trip_summary.csv", h=T)
 
+hmmdat<-rbind(read.csv("FINALdata2012.csv", h=T),
+              read.csv("FINALdata2014.csv", h=T),
+              read.csv("FINALdata2015.csv", h=T),
+              read.csv("FINALdata2016.csv", h=T))
+
+for(i in unique(trip_distances$tripID))
+{
+trip_distances[trip_distances$tripID==i,6]<-(nrow(hmmdat[hmmdat$states==2 & hmmdat$ID==as.character(i),])*2)/3600
+trip_distances[trip_distances$tripID==i,7]<-(nrow(hmmdat[hmmdat$states==3 & hmmdat$ID==as.character(i),])*2)/3600
+trip_distances[trip_distances$tripID==i,8]<-(nrow(hmmdat[hmmdat$states==1 & hmmdat$ID==as.character(i),])*2)/3600
+print(i)
+}
+
+write.csv(trip_distances, "gannet_dat_trip_summary_hmm.csv", quote=F, row.names=F) # write full tripsplit dataset
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # CONVERT TRIPS OBJECT TO TRAJECTORY OBJECT TO CALCULATE TURNING ANGLES ETC.
@@ -728,6 +745,64 @@ m3d <- fitHMM(data=data2016 ,nbStates=3,stepPar0=stepPar0,
 statesd<-viterbi(m3d)
 
 dat[grep("2016", dat$ID), ]$state_moveHMM<-statesd
+
+## set the poor computer off resampling the data to 30 second interval
+
+options(digits=12)
+rm(list=ls())
+
+setwd("~/research/gannets")
+datfull<-read.csv("gannet_dat_tripsplit_dives_CORRECTED.csv", h=T) 
+
+#force all to 2 second
+sec1dat<- which(datfull$year!="2012")
+sec2dat<-seq(sec1dat[2], sec1dat[length(sec1dat)], 2)
+
+dat2sec<-datfull[c(which(datfull$year=="2012"), sec2dat),]
+
+source("~/research/seabird_analyses/Heron_Island/heron_analyses_r_GPS/Resample.r")
+
+## set up to not interpolate between points > 1 hr apart
+
+tripz2012<-unique(dat2sec[dat2sec$year=="2012",]$trip_id)
+tripz2014<-unique(dat2sec[dat2sec$year=="2014",]$trip_id)
+tripz2015<-unique(dat2sec[dat2sec$year=="2015",]$trip_id)
+tripz2016<-unique(dat2sec[dat2sec$year=="2016",]$trip_id)
+
+
+
+results<-NULL
+for(i in tripz2014)
+{
+  Track<-dat2sec[dat2sec$trip_id == i,]
+  
+  #Track<-Track[-which(duplicated(Track$TrackTime)==TRUE),]
+  #print(paste(length(which(duplicated(Track$TrackTime)==TRUE)), "duplicates removed", sep=" "))
+  
+  resample_output<-resample(Track, timeStep=0.0166666666667)  ## timeStep set for
+                                                              ## 1 min intervals
+  
+  #readline("ok")
+  results<-rbind(results,resample_output)
+  print(i)
+}
+
+#write.csv(results, "data2012_resampled1min.csv", quote=F, row.names=F)
+#write.csv(results, "data2014_resampled1min.csv", quote=F, row.names=F)
+
+
+plot(Latitude~Longitude, results, pch=16, cex=0.4, col=Bird_ID)
+map("worldHires", add=T, col=3)
+
+
+results$DateGMT <- as.Date(as.POSIXlt(results$TrackTime, origin="1970-01-01", "GMT"))
+results$TimeGMT <- format((as.POSIXlt(results$TrackTime, origin="1970-01-01", "GMT")), "%H:%M:%S")
+
+results$DateTime2 <- paste(results$DateGMT, results$TimeGMT, sep= " ")
+results$DateTime2 <- as.POSIXct(strptime(results$DateTime2, "%Y-%m-%d %H:%M:%S"), "GMT")
+results$TrackTime2 <- as.double(results$DateTime2)
+
+
 
 
 
