@@ -274,6 +274,24 @@ print(i)
 
 write.csv(trip_distances, "gannet_dat_trip_summary_hmm.csv", quote=F, row.names=F) # write full tripsplit dataset
 
+
+
+# read in tripdistances and correct hmm results with 30 second interval model
+
+trip_distances<-read.csv("gannet_dat_trip_summary_hmm.csv",h=T)
+hmmdat<-read.csv("trial30sec.csv", h=T)
+
+for(i in unique(trip_distances$tripID))
+{
+  trip_distances[trip_distances$tripID==i,6]<-(nrow(hmmdat[hmmdat$state_moveHMM==2 & hmmdat$trip_id==as.character(i),])*30)/3600
+  trip_distances[trip_distances$tripID==i,7]<-(nrow(hmmdat[hmmdat$state_moveHMM==3 & hmmdat$trip_id==as.character(i),])*30)/3600
+  trip_distances[trip_distances$tripID==i,8]<-(nrow(hmmdat[hmmdat$state_moveHMM==1 & hmmdat$trip_id==as.character(i),])*30)/3600
+  print(i)
+}
+
+write.csv(trip_distances, "gannet_dat_trip_summary_hmm30sec.csv", quote=F, row.names=F) # write full tripsplit dataset
+
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # CONVERT TRIPS OBJECT TO TRAJECTORY OBJECT TO CALCULATE TURNING ANGLES ETC.
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -746,7 +764,6 @@ statesd<-viterbi(m3d)
 
 dat[grep("2016", dat$ID), ]$state_moveHMM<-statesd
 
-## set the poor computer off resampling the data to 30 second interval
 
 options(digits=12)
 rm(list=ls())
@@ -759,6 +776,49 @@ sec1dat<- which(datfull$year!="2012")
 sec2dat<-seq(sec1dat[2], sec1dat[length(sec1dat)], 2)
 
 dat2sec<-datfull[c(which(datfull$year=="2012"), sec2dat),]
+
+# In the same way as above we now resample to longer intervals by hacking out
+# some data. First try with 30 second interval on a trip by trip basis
+
+dat30sec<-NULL
+for ( i in unique(dat2sec$trip_id))
+{
+  d1<-dat2sec[dat2sec$trip_id==i,]
+  d2<-d1[seq(1,nrow(d1), 15),]
+  dat30sec<-rbind(dat30sec, d2)
+  print(i)
+}
+
+#try model on 30 sec interval data
+library(moveHMM)
+
+tempdata<-prepData(data.frame(x=dat30sec$Longitude, y=dat30sec$Latitude,
+                              ID=dat30sec$trip_id, year=dat30sec$year), type="LL")
+
+mu0 <- c(0.01,0.1,0.3)
+sigma0 <- c(0.01,0.1,0.3)
+zeromass0 <- c(0.1,0.01,0.01)
+stepPar0 <- c(mu0,sigma0, zeromass0)
+angleMean0 <- c(0,pi,0)
+kappa0 <- c(2,1,2)
+anglePar0 <- c(angleMean0,kappa0)
+
+temp30<- fitHMM(data=tempdata, nbStates=3,stepPar0=stepPar0,
+                anglePar0=anglePar0)
+
+states30<-viterbi(temp30)
+
+dat30sec$state_moveHMM<-states30
+
+dat30sec$TT_diff<-NULL
+dat30sec$dive<-NULL
+
+write.csv(dat30sec, "trial30sec.csv", row.names=F, quote=F)
+
+
+
+## set the poor computer off resampling the data to 30 second interval
+## this approach doesnt work.. too slow
 
 source("~/research/seabird_analyses/Heron_Island/heron_analyses_r_GPS/Resample.r")
 

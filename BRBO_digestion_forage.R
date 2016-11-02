@@ -43,10 +43,258 @@ end=aggregate(data=sel_trax, DateTime~trip_id, FUN=max)[,2], diet_time=c("23:00"
 
 #You have 4 digestion codes (D1, D2, D3 and D4) from undigested to digested…  and following these authors we can group them as follows:
 #D1 and D2 = 0-2.0 h of capture
-#D3= 2.1h-3.0 h of capture
+#D3= 2.1h-3.0  of capture
 #D4=3.1h – 6h of capture
 
+timez
+
+# ok so problem we have is these digestion timings are far too
+# short, most birds returned to colony (fed chick?) then we
+# got sample so food had already been in stomach for several hours
+
+# time hack to force all trips on same day
+
+sel_trax$DateTimeHack<-as.POSIXct(strptime(paste("2000-01-01", sel_trax$Time), "%Y-%m-%d %H:%M:%S"), "GMT")
+
+
+qplot(data=sel_trax, x=Longitude, y=Latitude, colour=factor(hmm_all_trips3), 
+      geom="point", facets=~trip_id)
+
+qplot(data=sel_trax, x=Time, y=ColDist, colour=factor(hmm_all_trips3), 
+      geom="point", facets=~trip_id)
+
+qplot(data=sel_trax, x=Time, y=factor(hmm_all_trips3), colour=factor(hmm_all_trips3), 
+      geom="point", facets=~trip_id)
+
+qplot(data=sel_trax, x=DateTimeHack, y=as.numeric(hmm_all_trips3), colour=hmm_all_trips3,
+geom=c("point", "line"), facets=~trip_id)+scale_x_datetime(date_breaks="1 hour", date_labels="%H")
+
+qplot(data=sel_trax[sel_trax$trip_id==timez$trip_id[1],], x=DateTimeHack, y=as.numeric(hmm_all_trips3), colour=hmm_all_trips3,
+      geom=c("point", "line"))+scale_x_datetime(date_breaks="1 hour", date_labels="%H %M")
+
+#ok so not very eloquent code to classify foraging bins windows
+# when selecting we gotta be pragmatic, we cannot, using digestion
+# levels, pull out unique foraging bouts below the temporal
+# resolution of hours.
+
+sel_trax$foragebin=0
+
+tripz<-timez$trip_id
+
+for(j in tripz)
+{
+plot(hmm_all_trips3~DateTimeHack, data=sel_trax[sel_trax$trip_id==j,], type="b", col=hmm_all_trips3)
+
+f1z<-identify(x=sel_trax[sel_trax$trip_id==j,]$DateTimeHack, y=sel_trax[sel_trax$trip_id==j,]$hmm_all_trips3)
+
+for_seq<-NULL
+for(i in 1:length(f1z)){
+  if(i %in% c(2,4,6,8,10,12)){next}
+  s1<-seq(f1z[i], f1z[i+1])
+  for_seq<-c(for_seq, s1)
+  }
+
+Sys.sleep(1)
+sel_trax[sel_trax$trip_id==j,]$foragebin[for_seq]<-1
+
+plot(hmm_all_trips3~DateTimeHack, data=sel_trax[sel_trax$trip_id==j,], type="b", col=foragebin+1, main=j)
+Sys.sleep(1)
+}
+
+qplot(data=sel_trax, x=DateTimeHack, y=foragebin, colour=factor(foragebin),
+      geom=c("point"), facets=~trip_id)+scale_x_datetime(date_breaks="1 hour", date_labels="%H")
+
+write.csv(sel_trax, "BRBO_diet_anal_trax_forage_binned.csv", quote=F, row.names=F)
+
+#cool ok so now we can do a time since last forage
+timez$last_feed<-timez$start[1]
+timez$first_feed<-timez$start[1]
+for (i in 1:nrow(timez))
+{timez[i,]$last_feed<-max(sel_trax[sel_trax$trip_id==timez$trip_id[i] & sel_trax$foragebin==1,]$DateTime)
+timez[i,]$first_feed<-min(sel_trax[sel_trax$trip_id==timez$trip_id[i] & sel_trax$foragebin==1,]$DateTime)
+}
+timez$tdiff_last<-as.POSIXct(strptime(paste(as.Date(timez$last_feed), timez$diet_time), "%Y-%m-%d %H:%M"), "GMT")-timez$last_feed
+timez$tdiff_first<-as.POSIXct(strptime(paste(as.Date(timez$first_feed), timez$diet_time), "%Y-%m-%d %H:%M"), "GMT")-timez$first_feed
 
 
 
-            
+regurg<-read.csv("Regurgitations Data_ BB_GMC_MARK.csv", h=T)
+
+#unique(sel_trax$trip_id)
+#substr(unique(sel_trax$trip_id),10,11)
+#unique(regurg$Sample.ID)
+
+regurg<-regurg[!is.na(regurg$trip_id),]
+
+# so basically were gonna set up regressions for squid and 
+# flying fish as these are the only ones there is enough data for
+
+regurg2<-regurg[regurg$Species %in% c("S", "FF"),]
+
+m_seq<-match(regurg2$trip_id, timez$trip_id)
+#could use match?
+
+regurg2$tdiff_last<-timez$tdiff_last[1]
+regurg2$tdiff_first<-timez$tdiff_last[1]
+regurg2$tdiff_last<-unlist(lapply(m_seq, FUN=function(x){timez[x,]$tdiff_last}))
+regurg2$tdiff_first<-unlist(lapply(m_seq, FUN=function(x){timez[x,]$tdiff_first}))
+
+p<-ggplot(data=regurg2[regurg2$Species=="FF",], aes(y=tdiff_first, x=Digestion.code))
+p+geom_point()            
+
+# ok so this is kinda the wrong plot, we basically have a range of
+# digestion codes for each tdiff, but we also have min and max tdiff
+# so can effectively say prey was caught between those times
+
+write.csv(regurg2, "BRBO_regurg_times.csv", quote=F, row.names=F)
+
+# so issue is that digestion codes can be effected by big lumps
+# of small fish if all in a lump even if caught at same time
+# also adult will likely feed chick some food before we caught 
+# this could come from any point in the foraging trip
+# so we'll do regression for dig code~time where time for 
+# each code is the min and max, hopefully over lots of catches 
+# something will even out?
+
+regurg3<-rbind(regurg2, regurg2)
+regurg3$tdiff_both<-c(regurg2$tdiff_last, regurg2$tdiff_first)
+
+m1<-lm(Digestion.code~tdiff_both, data=regurg3[regurg3$Species=="FF",])
+library(lme4)
+
+m1<-lmer(Digestion.code~tdiff_both+(1|trip_id), data=regurg3[regurg3$Species=="FF",])
+summary(m1)
+plot(m1)
+
+d1<-data.frame(pred=predict(m1, newdata=data.frame(tdiff_both=seq(2.5,8,0.2)), type="response", re.form=~0),
+               tdiff_both=seq(2.5,8,0.2))
+
+
+p<-ggplot(data=regurg3[regurg3$Species=="FF",], aes(y=Digestion.code, x=tdiff_both))
+p+geom_jitter(aes(colour=trip_id), height=0.2, width=0)+geom_line(data=d1, aes(x=tdiff_both, y=pred))
+
+#
+
+regurg_assn<-read.csv("BRBO_regurg_times_assigned.csv", h=T)
+library(lme4)
+
+p<-ggplot(data=regurg_assn[regurg_assn$Species=="FF",], aes(y=Digestion.code, x=tdiff_assn))
+p+geom_jitter(aes(colour=trip_id))
+
+m1<-lmer(Digestion.code~tdiff_assn+(1|trip_id), data=regurg_assn[regurg_assn$Species=="FF",])
+sum(resid(m1, type="pearson")^2)/df.residual(m1)
+summary(m1)
+plot(m1)
+
+d1<-data.frame(pred=predict(m1, newdata=data.frame(tdiff_assn=seq(2.5,8,0.2)), type="response", re.form=~0),
+               tdiff_assn=seq(2.5,8,0.2))
+p<-ggplot(data=regurg_assn[regurg_assn$Species=="FF",], aes(y=Digestion.code, x=tdiff_assn))
+p+geom_jitter(aes(colour=trip_id), height=0.2, width=0)+geom_line(data=d1, aes(x=tdiff_assn, y=pred))
+
+m2<-lmer(Digestion.code~tdiff_assn+(1|trip_id), data=regurg_assn[regurg_assn$Species=="S",])
+summary(m2)
+plot(m2)
+# maybe mixed model not good as unbalanced samples
+m2a<-lm(Digestion.code~tdiff_assn, data=regurg_assn[regurg_assn$Species=="S",])
+
+d1<-data.frame(pred=predict(m2, newdata=data.frame(tdiff_assn=seq(3,14,0.2)), type="response", re.form=~0),
+               tdiff_assn=seq(3,14,0.2))
+d2<-data.frame(pred=predict(m2a, newdata=data.frame(tdiff_assn=seq(3,14,0.2)), type="response"),
+               tdiff_assn=seq(3,14,0.2))
+p<-ggplot(data=regurg_assn[regurg_assn$Species=="S",], aes(y=Digestion.code, x=tdiff_assn))
+p+geom_jitter(aes(colour=trip_id), height=0.2, width=0)+geom_line(data=d1, aes(x=tdiff_assn, y=pred))+
+  geom_line(data=d2, aes(x=tdiff_assn, y=pred, colour="red"))
+
+#ok right approach, maybe asymptotic curve or better sort data?
+
+# hmm maybe if we combined prey types into one regression it would be simplar
+p<-ggplot(data=regurg_assn, aes(y=Digestion.code, x=tdiff_assn))
+p+geom_jitter(aes(colour=trip_id), height=0.2, width=0)
+
+p<-ggplot(data=regurg_assn, aes(y=Digestion.code, x=tdiff_assn))
+p+geom_jitter(aes(colour=Species), height=0.2, width=0)
+
+
+m3<-lmer(Digestion.code~tdiff_assn+(1|trip_id), data=regurg_assn)
+sum(resid(m3, type="pearson")^2)/df.residual(m3)
+summary(m3)
+
+d1<-data.frame(pred=predict(m3, newdata=data.frame(tdiff_assn=seq(0,14,0.2)), type="response", re.form=~0),
+               tdiff_assn=seq(0,14,0.2))
+p<-ggplot(data=regurg_assn, aes(y=Digestion.code, x=tdiff_assn))
+p+geom_jitter(aes(colour=trip_id), height=0.2, width=0)+geom_line(data=d1, aes(x=tdiff_assn, y=pred))+
+  scale_x_continuous(breaks=0:14)+scale_y_continuous(breaks=0:4)
+
+m3a<-lmer(Digestion.code~tdiff_assn+Species+(1|trip_id), data=regurg_assn)
+sum(resid(m3a, type="pearson")^2)/df.residual(m3a)
+summary(m3a)
+
+nd<-data.frame(tdiff_assn=seq(0,14,0.2), Species=c(rep("S", 71), rep("FF", 71)))
+d1<-data.frame(pred=predict(m3a, newdata=nd, type="response", re.form=~0),nd)
+              
+p<-ggplot(data=regurg_assn, aes(y=Digestion.code, x=tdiff_assn))
+p+geom_jitter(aes(colour=trip_id), height=0.2, width=0)+geom_line(data=d1, aes(x=tdiff_assn, y=pred, colour=Species))+
+  scale_x_continuous(breaks=0:14)+scale_y_continuous(breaks=0:4)
+
+m3b<-lmer(Digestion.code~tdiff_assn*Species+(1|trip_id), data=regurg_assn)
+sum(resid(m3b, type="pearson")^2)/df.residual(m3b)
+summary(m3b)
+
+nd<-data.frame(tdiff_assn=seq(0,14,0.2), Species=c(rep("S", 71), rep("FF", 71)))
+d1<-data.frame(pred=predict(m3b, newdata=nd, type="response", re.form=~0),nd)
+
+p<-ggplot(data=regurg_assn, aes(y=Digestion.code, x=tdiff_assn))
+p+geom_jitter(aes(colour=trip_id), height=0.2, width=0)+geom_line(data=d1, aes(x=tdiff_assn, y=pred, colour=Species))+
+  scale_x_continuous(breaks=0:14)+scale_y_continuous(breaks=0:4)
+
+sum(resid(m3, type="pearson")^2)/df.residual(m3)
+sum(resid(m3a, type="pearson")^2)/df.residual(m3a)
+sum(resid(m3b, type="pearson")^2)/df.residual(m3b)
+
+AIC(m3, m3a, m3b)
+library(MuMIn)
+r.squaredGLMM(m3)
+r.squaredGLMM(m3a)
+r.squaredGLMM(m3b)
+#best model is m3a
+summary(m3a)
+
+# write out model m3a predictions
+nd<-data.frame(tdiff_assn=seq(0,14,0.2), Species=c(rep("S", 71), rep("FF", 71)))
+d1<-data.frame(pred=predict(m3a, newdata=nd, type="response", re.form=~0),nd)
+
+write.csv(d1, "BRBO_m3a_model_predictions.csv", quote=F, row.names=F)
+# simplified regression times
+# Digest code   T squid   T flyfish  
+#     1           0-4 hr    0-2 hr         
+#     2           4-6 hr    2-4 hr
+#     3           6-8 hr    4-6 hr
+#     4           8+ hr     6+ hr
+
+
+Linear mixed model fit by REML ['lmerMod']
+Formula: Digestion.code ~ tdiff_assn + Species + (1 | trip_id)
+Data: regurg_assn
+
+REML criterion at convergence: 85.6
+
+Scaled residuals: 
+  Min      1Q  Median      3Q     Max 
+-1.3665 -0.5216 -0.0132  0.9155  1.3322 
+
+Random effects:
+  Groups   Name        Variance Std.Dev.
+trip_id  (Intercept) 1.8879   1.374   
+Residual             0.3493   0.591   
+Number of obs: 37, groups:  trip_id, 6
+
+Fixed effects:
+  Estimate Std. Error t value
+(Intercept)  0.05328    0.81690   0.065
+tdiff_assn   0.47952    0.07840   6.117
+SpeciesS    -0.99885    0.38211  -2.614
+
+Correlation of Fixed Effects:
+  (Intr) tdff_s
+tdiff_assn -0.658       
+SpeciesS   -0.182 -0.132
