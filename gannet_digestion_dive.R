@@ -9,6 +9,12 @@ setwd("~/research/gannets")
 # then kill unneeded columns to reduce file size
 datfull<-read.csv("gannet_dat_tripsplit_dives_CORRECTED.csv", h=T)
 
+# First we ammend dive column as per gabriel's suggestions
+# Now its 3:8 seconds not 2:8
+table(datfull$dive)
+datfull$dive<-0
+datfull[ datfull$TT_diff%in% (3:8),]$dive<-1
+table(datfull$dive)
 
 sel_trax1415<-datfull[with(datfull, trip_id== 'G34_GPS&Alt_export_2014-12-23 07-501'| 
                          trip_id == 'G49_GPS & Alt4_export_2014-12-25 08-321'| trip_id== 'G57_GPS_Alt 4_export_2014-12-27 06-591'|
@@ -48,7 +54,7 @@ sel_trax$TT_diff<-NULL
 sel_trax$Date<-NULL
 sel_trax$Time<-NULL
 
-write.csv(sel_trax, "sel_trax_regurg_dive_loc.csv", quote=F, row.names=F)
+write.csv(sel_trax, "sel_trax_regurg_dive_3_8_sec_loc.csv", quote=F, row.names=F)
 
 # when viewed in QGIS there seem to be many 'dives' that take place in 
 # open water when according to the hmm the bird was flying, these could be
@@ -57,6 +63,9 @@ write.csv(sel_trax, "sel_trax_regurg_dive_loc.csv", quote=F, row.names=F)
 # HMM point; if HMM point = flying then remove dive point.
 
 # Will implement the above approach if first stab without doesnt work
+
+# Update: Gabrials' suggestion to use 3:8 secs as the dive interval kinda
+# clears up the above issue
 
 sel_trax$DateTime<-as.POSIXct(strptime(sel_trax$DateTime, "%Y-%m-%d %H:%M:%S"), "GMT")
 sel_trax$trip_id<-factor(sel_trax$trip_id) # remove unused factors 
@@ -89,16 +98,17 @@ timez$dietDateTime<-as.POSIXct(strptime(timez$end, "%Y-%m-%d %H:%M:%S"), "GMT")
 
 #set both to character to stop factor conflicts
 regurg$ID<-as.character(regurg$ID)
-dive_trax$ID<-as.character(dive_trax$ID)
 
 dive_trax<-sel_trax[sel_trax$dive==1,]
+dive_trax$ID<-as.character(dive_trax$ID)
+
 
 dive_trax$t_from_dsample<-0
 for(i in 1:nrow(dive_trax))
 {
   dive_trax[i,]$t_from_dsample=
-    timez[timez$ID==dive_trax[i,]$ID,]$dietDateTime-
-    dive_trax[i,]$DateTime
+    as.numeric(timez[timez$ID==dive_trax[i,]$ID,]$dietDateTime-
+    dive_trax[i,]$DateTime,  unit="hours")
 }
 
 dive_trax$n_Anchovy<-0
@@ -117,6 +127,56 @@ dive_trax$n_YellowEyeMullet<-0
 #     3           2-4 hr    
 #     4           4-6 hr
 #     5           >6 hr
+
+# need to redefine digestion codes to match data
+
+qplot(data=dive_trax, x=t_from_dsample)+facet_wrap(~trip_id)
+
+# might also be interesting to link prey size/weight to areas
+regurg_trial<-regurg
+regurg_trial$t1<-0 # 0-1,1-2,2-4,4-6
+regurg_trial$t2<-0 # 0-2,2-3,3-5,5-7
+regurg_trial$t3<-0 # 0-2,2-4,4-6,6-9
+regurg_trial$t4<-0 # 0-2,2-5,5-8,8-11
+regurg_trial$t5<-0
+
+for(i in 1:nrow(regurg_trial))
+    {
+  if(regurg_trial[i,]$Digestion.code==1){capture_bin<-c(0,2)}
+  if(regurg_trial[i,]$Digestion.code==2){capture_bin<-c(2,5)}
+  if(regurg_trial[i,]$Digestion.code==3){capture_bin<-c(5,8)}
+  if(regurg_trial[i,]$Digestion.code==4){capture_bin<-c(8,11)}
+  
+  regurg_trial[i,]$t3<-
+          nrow(dive_trax[dive_trax$ID==regurg_trial[i,]$ID & 
+          dive_trax$t_from_dsample>= capture_bin[1] &
+          dive_trax$t_from_dsample<= capture_bin[2],])
+    }
+  
+
+regurg3<-rbind(regurg2, regurg2)
+regurg3$tdiff_both<-c(regurg2$tdiff_last, regurg2$tdiff_first)
+
+m1<-lm(Digestion.code~tdiff_both, data=regurg3[regurg3$Species=="FF",])
+library(lme4)
+
+m1<-lmer(Digestion.code~tdiff_both+(1|trip_id), data=regurg3[regurg3$Species=="FF",])
+summary(m1)
+plot(m1)
+
+d1<-data.frame(pred=predict(m1, newdata=data.frame(tdiff_both=seq(2.5,8,0.2)), type="response", re.form=~0),
+               tdiff_both=seq(2.5,8,0.2))
+
+
+p<-ggplot(data=regurg3[regurg3$Species=="FF",], aes(y=Digestion.code, x=tdiff_both))
+p+geom_jitter(aes(colour=trip_id), height=0.2, width=0)+geom_line(data=d1, aes(x=tdiff_both, y=pred))
+
+# absences explained.
+# G11_2015 has second part of foraging trip after long rest ok only 3 points
+# G41 is not in sel_trax, 
+# neither is 9012012_tag1542_gp.txt or 10012012_tag714_gp.txt
+# or 13012012_tag714_gp.txt
+
 
 
 # might also be interesting to link prey size/weight to areas
@@ -208,4 +268,5 @@ for(i in 1:nrow(regurg))
 }
 
 write.csv(dive_trax, "dive_trax_1.csv", quote=F, row.names=F)
+
 
