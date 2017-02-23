@@ -22,8 +22,8 @@ sel_trax$t_from_dsample<-0
 for(i in 1:nrow(sel_trax))
 {
  sel_trax[i,]$t_from_dsample=
-   timez[timez$trip_id==sel_trax[i,]$trip_id,]$dietDateTime-
-   sel_trax[i,]$DateTime
+   as.numeric(timez[timez$trip_id==sel_trax[i,]$trip_id,]$dietDateTime-
+   sel_trax[i,]$DateTime, unit="hours")
 }
 
 sel_trax$S_count<-0
@@ -35,19 +35,32 @@ sel_trax$FF_count<-0
 #     3           6-8 hr    4-6 hr
 #     4           8+ hr     6+ hr
 
+# revised times using CIs
+# Digest code   T squid   T flyfish  
+#     1           0-3.9 hr      0-2.5 hr (2)        
+#     2           2.5-7.7 hr    1.4-4.8 hr
+#     3           7.5-11.6 hr   2.7-7.3 hr
+#     4           10+ hr        5.5+ hr
+
+# revised times using CIs
+# Digest code   T squid   T flyfish  
+#     1           0-3.8 hr      0-2.3 hr (2)        
+#     2           2.2-7.7 hr    1.4-4.6 hr
+#     3           6.4**-14 hr   2.8-6.8 hr   ** should be 6.7 and 11.4 but accomodate
+#     4           9+ hr        5.7+ hr
 
 # might also be interesting to link prey size/weight to areas
 for(i in 1:nrow(regurg_assn))
 {
-  if(regurg_assn[i,]$Species=="FF" & regurg_assn[i,]$Digestion.code==1){capture_bin<-c(0,2)}
-  if(regurg_assn[i,]$Species=="FF" & regurg_assn[i,]$Digestion.code==2){capture_bin<-c(2,4)}
-  if(regurg_assn[i,]$Species=="FF" & regurg_assn[i,]$Digestion.code==3){capture_bin<-c(4,6)}
-  if(regurg_assn[i,]$Species=="FF" & regurg_assn[i,]$Digestion.code==4){capture_bin<-c(6,24)}
+  if(regurg_assn[i,]$Species=="FF" & regurg_assn[i,]$Digestion.code==1){capture_bin<-c(0,2.3)}
+  if(regurg_assn[i,]$Species=="FF" & regurg_assn[i,]$Digestion.code==2){capture_bin<-c(1.4,4.6)}
+  if(regurg_assn[i,]$Species=="FF" & regurg_assn[i,]$Digestion.code==3){capture_bin<-c(2.8,6.8)}
+  if(regurg_assn[i,]$Species=="FF" & regurg_assn[i,]$Digestion.code==4){capture_bin<-c(5.7,24)}
   
-  if(regurg_assn[i,]$Species=="S" & regurg_assn[i,]$Digestion.code==1){capture_bin<-c(0,4)}
-  if(regurg_assn[i,]$Species=="S" & regurg_assn[i,]$Digestion.code==2){capture_bin<-c(4,6)}
-  if(regurg_assn[i,]$Species=="S" & regurg_assn[i,]$Digestion.code==3){capture_bin<-c(6,8)}
-  if(regurg_assn[i,]$Species=="S" & regurg_assn[i,]$Digestion.code==4){capture_bin<-c(8,24)}
+  if(regurg_assn[i,]$Species=="S" & regurg_assn[i,]$Digestion.code==1){capture_bin<-c(0,3.8)}
+  if(regurg_assn[i,]$Species=="S" & regurg_assn[i,]$Digestion.code==2){capture_bin<-c(2.2,7.7)}
+  if(regurg_assn[i,]$Species=="S" & regurg_assn[i,]$Digestion.code==3){capture_bin<-c(6.4,14)}
+  if(regurg_assn[i,]$Species=="S" & regurg_assn[i,]$Digestion.code==4){capture_bin<-c(9,24)}
 
   
   if(regurg_assn[i,]$Species=="S"){
@@ -89,4 +102,4 @@ for(i in 1:nrow(regurg_assn))
 # old (or young...hmmm) to fit in the tracking, some of these are real,
 # some artifacts of bad lining up. even so write out and have a look
 
-write.csv(sel_trax, "BRBO_diet_anal_trax_forage_applied.csv", quote=F, row.names=F)
+write.csv(sel_trax, "BRBO_diet_anal_trax_forage_applied2.csv", quote=F, row.names=F)

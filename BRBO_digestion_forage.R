@@ -76,6 +76,8 @@ qplot(data=sel_trax[sel_trax$trip_id==timez$trip_id[1],], x=DateTimeHack, y=as.n
 # when selecting we gotta be pragmatic, we cannot, using digestion
 # levels, pull out unique foraging bouts below the temporal
 # resolution of hours.
+# The below loop alocates points into foraging/non-foragaing bouts,
+# basically tidies up hmm results
 
 sel_trax$foragebin=0
 
@@ -107,6 +109,8 @@ qplot(data=sel_trax, x=DateTimeHack, y=foragebin, colour=factor(foragebin),
 write.csv(sel_trax, "BRBO_diet_anal_trax_forage_binned.csv", quote=F, row.names=F)
 
 #cool ok so now we can do a time since last forage
+timez$trip_id<-factor(timez$trip_id) # removes old unused factor levels
+
 timez$last_feed<-timez$start[1]
 timez$first_feed<-timez$start[1]
 for (i in 1:nrow(timez))
@@ -214,7 +218,7 @@ p+geom_jitter(aes(colour=trip_id), height=0.2, width=0)
 p<-ggplot(data=regurg_assn, aes(y=Digestion.code, x=tdiff_assn))
 p+geom_jitter(aes(colour=Species), height=0.2, width=0)
 
-
+# no sp differences
 m3<-lmer(Digestion.code~tdiff_assn+(1|trip_id), data=regurg_assn)
 sum(resid(m3, type="pearson")^2)/df.residual(m3)
 summary(m3)
@@ -236,6 +240,7 @@ p<-ggplot(data=regurg_assn, aes(y=Digestion.code, x=tdiff_assn))
 p+geom_jitter(aes(colour=trip_id), height=0.2, width=0)+geom_line(data=d1, aes(x=tdiff_assn, y=pred, colour=Species))+
   scale_x_continuous(breaks=0:14)+scale_y_continuous(breaks=0:4)
 
+# different sp curves
 m3b<-lmer(Digestion.code~tdiff_assn*Species+(1|trip_id), data=regurg_assn)
 sum(resid(m3b, type="pearson")^2)/df.residual(m3b)
 summary(m3b)
@@ -246,6 +251,21 @@ d1<-data.frame(pred=predict(m3b, newdata=nd, type="response", re.form=~0),nd)
 p<-ggplot(data=regurg_assn, aes(y=Digestion.code, x=tdiff_assn))
 p+geom_jitter(aes(colour=trip_id), height=0.2, width=0)+geom_line(data=d1, aes(x=tdiff_assn, y=pred, colour=Species))+
   scale_x_continuous(breaks=0:14)+scale_y_continuous(breaks=0:4)
+
+# same sp curves qith quadratic
+m3c<-lmer(Digestion.code~poly(tdiff_assn,2)+Species+(1|trip_id), data=regurg_assn)
+sum(resid(m3c, type="pearson")^2)/df.residual(m3c)
+summary(m3c) # nah
+
+# predct m3a random effects
+
+nd<-expand.grid(tdiff_assn=seq(0,14,0.2), Species=c("S","FF"), trip_id=levels(regurg_assn$trip_id))
+d1<-data.frame(pred=predict(m3b, newdata=nd, type="response", re.form=~(1|trip_id)), nd)
+
+p<-ggplot(data=regurg_assn, aes(y=Digestion.code, x=tdiff_assn))
+p+geom_jitter(aes(colour=trip_id), height=0.2, width=0)+geom_line(data=d1, aes(x=tdiff_assn, y=pred, colour=trip_id, linetype=Species))+
+  scale_x_continuous(breaks=0:14)+scale_y_continuous(breaks=0:4)
+
 
 sum(resid(m3, type="pearson")^2)/df.residual(m3)
 sum(resid(m3a, type="pearson")^2)/df.residual(m3a)
@@ -271,30 +291,86 @@ write.csv(d1, "BRBO_m3a_model_predictions.csv", quote=F, row.names=F)
 #     3           6-8 hr    4-6 hr
 #     4           8+ hr     6+ hr
 
+# trial with unweighted data
+regurg_assn$uniqueID<-paste(regurg_assn$trip_id, regurg_assn$Species, regurg_assn$tdiff_assn)
+unique_regurg_assn<-regurg_assn[-which(duplicated(regurg_assn$uniqueID)),]
 
-Linear mixed model fit by REML ['lmerMod']
-Formula: Digestion.code ~ tdiff_assn + Species + (1 | trip_id)
-Data: regurg_assn
+m3b<-lmer(Digestion.code~tdiff_assn*Species+(1|trip_id), data=unique_regurg_assn)
+sum(resid(m3b, type="pearson")^2)/df.residual(m3b)
+summary(m3b)
 
-REML criterion at convergence: 85.6
 
-Scaled residuals: 
-  Min      1Q  Median      3Q     Max 
--1.3665 -0.5216 -0.0132  0.9155  1.3322 
+nd<-expand.grid(tdiff_assn=seq(0,14,0.2), Species=c("S","FF"), trip_id=levels(regurg_assn$trip_id))
+d1<-data.frame(pred=predict(m3b, newdata=nd, type="response", re.form=~(1|trip_id)), nd)
 
-Random effects:
-  Groups   Name        Variance Std.Dev.
-trip_id  (Intercept) 1.8879   1.374   
-Residual             0.3493   0.591   
-Number of obs: 37, groups:  trip_id, 6
+p<-ggplot(data=unique_regurg_assn, aes(y=Digestion.code, x=tdiff_assn))
+p+geom_point(aes(colour=trip_id, shape=Species))+geom_line(data=d1, aes(x=tdiff_assn, y=pred, colour=trip_id, linetype=Species))+
+  scale_x_continuous(breaks=0:14)+scale_y_continuous(breaks=0:4)
 
-Fixed effects:
-  Estimate Std. Error t value
-(Intercept)  0.05328    0.81690   0.065
-tdiff_assn   0.47952    0.07840   6.117
-SpeciesS    -0.99885    0.38211  -2.614
+#looks good better as non random effect
 
-Correlation of Fixed Effects:
-  (Intr) tdff_s
-tdiff_assn -0.658       
-SpeciesS   -0.182 -0.132
+m4b<-lm(Digestion.code~tdiff_assn*Species, data=unique_regurg_assn)
+sum(resid(m4b, type="pearson")^2)/df.residual(m4b)
+summary(m4b)
+AIC(m4b, m3b)
+
+nd<-expand.grid(tdiff_assn=seq(0,14,0.2), Species=c("S","FF"))
+d1<-data.frame(pred=predict(m4b, newdata=nd, type="response"), nd)
+
+p<-ggplot(data=unique_regurg_assn, aes(y=Digestion.code, x=tdiff_assn))
+p+geom_point(aes(colour=trip_id, shape=Species))+geom_line(data=d1, aes(x=tdiff_assn, y=pred, linetype=Species))+
+  scale_x_continuous(breaks=0:14)+scale_y_continuous(breaks=0:4)
+
+# ok that was using the old tdiff_assn, which is arbitrary when considering individual smaples
+#write.csv(unique_regurg_assn, "BRBO_regurg_times_assigned_unique.csv", quote=F, row.names=F)
+# have corrected tdiffs(new column) for removing dig class 4
+
+unique_regurg_assn<-read.csv("BRBO_regurg_times_assigned_unique.csv",h=T)
+
+m4c<-lm(Digestion.code~tdiff_assn_no4+Species, 
+        data=unique_regurg_assn[unique_regurg_assn$Digestion.code<4,])
+sum(resid(m4c, type="pearson")^2)/df.residual(m4c)
+summary(m4c)
+AIC(m4b, m4c)
+
+nd<-expand.grid(tdiff_assn_no4=seq(0,14,0.2), Species=c("S","FF"))
+d1<-data.frame(pred=predict(m4c, newdata=nd, interval="confidence",type="response"), nd)
+
+p<-ggplot(data=d1, aes(x=tdiff_assn_no4))
+p+geom_point(data=unique_regurg_assn, aes(y=Digestion.code, x=tdiff_assn_no4,colour=trip_id, shape=Species))+
+  geom_line(data=d1, aes(x=tdiff_assn_no4, y=pred.fit, linetype=Species))+
+  geom_ribbon(data=d1, aes(x=tdiff_assn_no4, ymin=pred.lwr, ymax=pred.upr, fill=Species), alpha=0.5)+
+  scale_x_continuous(breaks=0:14)+scale_y_continuous(breaks=0:4)
+
+# looks good, try forccing the intercept through 0 and keep the dig code 4's in
+
+m4d<-lm(Digestion.code~-1+tdiff_assn_no4:Species, 
+        data=unique_regurg_assn)
+#sum(resid(m4d, type="pearson")^2)/df.residual(m4d)
+summary(m4d)
+AIC(m4d, m4c)
+lsmeans(m4d, spec="Species")
+anova(m4d)
+
+nd<-expand.grid(tdiff_assn_no4=seq(0,14,0.2), Species=c("S","FF"))
+d1<-data.frame(pred=predict(m4d, newdata=nd, interval="confidence",type="response"), nd)
+
+p<-ggplot(data=d1, aes(x=tdiff_assn_no4))
+p+geom_point(data=unique_regurg_assn, aes(y=Digestion.code, x=tdiff_assn_no4,colour=trip_id, shape=Species))+
+  geom_line(data=d1, aes(x=tdiff_assn_no4, y=pred.fit, linetype=Species))+
+  geom_ribbon(data=d1, aes(x=tdiff_assn_no4, ymin=pred.lwr, ymax=pred.upr, fill=Species), alpha=0.5)+
+  scale_x_continuous(breaks=0:14)+scale_y_continuous(breaks=0:4)
+
+# cool, pretty happy. So we use a zero intercept, with interaction term on data
+
+nd<-expand.grid(tdiff_assn_no4=seq(0,14,0.1), Species=c("S","FF"))
+d1<-data.frame(pred=predict(m4d, newdata=nd, interval="confidence",type="response"), nd)
+
+write.csv(d1, "BRBO_m4d_model_predictions.csv", quote=F, row.names=F)
+# simplified regression times
+# Digest code   T squid   T flyfish  
+#     1           0-3 hr    0-1.7 hr (2)        
+#     2           3-6 hr    1.7-3.5 hr
+#     3           6-9 hr    3.5-5.2 hr
+#     4           9-12 hr   5.2-7 hr
+
