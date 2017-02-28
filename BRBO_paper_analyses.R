@@ -11,7 +11,7 @@ dat$Date<-substr(dat$DateTime, 1,8)
 
 head(dat)
 
-#remove non returnning trips
+#remove non returnning trips !!!!!!!
 dat<-dat[dat$Returns!="N",]
 
 hist(dat$max_dist)
@@ -330,6 +330,22 @@ anova(lm(mean_bout~Sex, data=out[out$mean_bout<50,]))
 qplot(data=dat[dat$hmm_all_trips3==2,],
       y=ColDist, x=Sex, geom="boxplot")
 
+summary(lm(ColDist~Sex, data=dat[dat$hmm_all_trips3==2,]))
+anova(lm(ColDist~Sex, data=dat[dat$hmm_all_trips3==2,]))
+
+library(lme4)
+summary(lmer(ColDist~Sex+(1|TrackID), data=dat[dat$hmm_all_trips3==2,]))
+drop1(lmer(ColDist~Sex+(1|TrackID), data=dat[dat$hmm_all_trips3==2,]), test="Chisq")
+#Single term deletions
+#Model:
+#  ColDist ~ Sex + (1 | TrackID)
+#Df    AIC    LRT Pr(Chi)  
+#<none>    143967                 
+#Sex     1 143970 4.8979 0.02689 *
+#  ---
+#  Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+
 # check if AM/PM returning birds contained more flying fish/squid
 
 setwd("~/grive/phd/analyses/BRBO_raine")
@@ -341,11 +357,177 @@ dat$Date<-substr(dat$DateTime, 1,8)
 #remove non returnning trips
 dat<-dat[dat$Returns!="N",]
 
-diet<-read.csv("Regurgitations Data_ BB_GMC_MARK.csv", h=T)
 
-dat$end_time<-dat$hour+dat$tot_time
-hist(dat$end_time)
+# make some forging location kernels
+dat<-read.csv("~/grive/phd/analyses/BRBO_raine/BRBO_raine_hmm.csv", h=T)
 
-substr(dat[dat$end_time<13,]$tripID, 10,14)
-# oh it ok as we only have the 6 gps and diet birds to
-# test and only 1 was an AM bird.
+dat<-dat[dat$Returns!="N",]
+
+source("~/grive/phd/scripts/github_MIBA/batchUD.R")
+
+
+for(j in c(99,75,50,25))
+{
+  #heron_old$ID<-j
+  dat$ID<-j
+  UD_out<-batchUD(dat[with(dat, hmm_all_trips3==2 & Sex=='M'),],
+                  Scale = 2, UDLev = j)
+  
+  if(j==99){all_UDs<-UD_out}else{all_UDs<-spRbind(all_UDs, UD_out)}
+  
+  plot(all_UDs, border=factor(all_UDs$id))
+}
+
+all_UDs <- spTransform(all_UDs, CRS=CRS("+proj=longlat +ellps=WGS84"))
+#I updated Lubuntu and now proj is handed correctly so can deal with WGS!! :)
+
+plot(all_UDs, border=factor(all_UDs$id), lwd=2)
+
+setwd("~/grive/phd/analyses/BRBO_raine")
+writeOGR(all_UDs, layer="BRBO_male_forage2km", dsn="GIS", driver="ESRI Shapefile", verbose=TRUE, overwrite=T)
+
+#birdlife approach
+dat$ID<-dat$trip_id
+UD_male<-batchUD(dat[with(dat, hmm_all_trips3==2 & Sex=='M'),],
+                Scale = 5, UDLev = 50)
+UD_male <- spTransform(UD_male, CRS=CRS("+proj=longlat +ellps=WGS84"))
+
+r1<-raster("/home/mark/grive/phd/sourced_data/env_data/ausbath_09_v4/w001001.adf")
+
+extent=(c(143, 145, -10, -13))
+
+r1<-crop(r1, extent(c(143, 145, -13, -10)))
+
+Male_udcount<-rasterize(UD_male, r1, field=1, fun='count')
+
+writeRaster(Male_udcount, "~/grive/phd/analyses/BRBO_raine/GIS/maleUDcount.tif", overwrite=T)
+
+dat$ID<-dat$trip_id
+UD_female<-batchUD(dat[with(dat, hmm_all_trips3==2 & Sex=='F'),],
+                 Scale = 5, UDLev = 50)
+UD_female <- spTransform(UD_female, CRS=CRS("+proj=longlat +ellps=WGS84"))
+
+
+Female_udcount<-rasterize(UD_female, r1, field=1, fun='count')
+writeRaster(Female_udcount, "~/grive/phd/analyses/BRBO_raine/GIS/femaleUDcount.tif", overwrite=T)
+
+# do hour of day foraging
+
+setwd("~/grive/phd/analyses/BRBO_raine")
+
+dat<-read.csv("~/grive/phd/analyses/BRBO_raine/BRBO_raine_hmm.csv", h=T)
+
+dat<-dat[dat$Returns!="N",]
+
+dat$Hr<-as.numeric(substr(dat$Time, 1,2))
+
+d_batlarge<-aggregate(trip_id~Hr+Sex, dat, FUN=function(x){length(unique(x))})
+
+d_batlarge$trip_id_perc<-0
+d_batlarge[d_batlarge$Sex=="F",]$trip_id_perc<-
+  round((d_batlarge[d_batlarge$Sex=="F",]$trip_id/length(unique(dat[dat$Sex=="F",]$trip_id)))*100)
+d_batlarge[d_batlarge$Sex=="M",]$trip_id_perc<-
+  round((d_batlarge[d_batlarge$Sex=="M",]$trip_id/length(unique(dat[dat$Sex=="M",]$trip_id)))*100)
+
+
+d2<-aggregate(Hr~trip_id+Sex, dat, FUN=function(x){min(x)})
+d3<-aggregate(Hr~trip_id+Sex, dat, FUN=function(x){max(x)})
+
+d_sten<-d_batlarge
+out<-NULL
+for(i in 1:nrow(d_sten)){
+  out<-rbind(out, data.frame(Sex=d_sten[i,]$Sex,Hr=d_sten[i,]$Hr,
+            varib="n_start", count=seq(0, nrow(d2[d2$Sex==d_sten[i,]$Sex & d2$Hr==d_sten[i,]$Hr,]))),
+            data.frame(Sex=d_sten[i,]$Sex,Hr=d_sten[i,]$Hr,
+            varib="n_end", count=seq(0, nrow(d3[d3$Sex==d_sten[i,]$Sex & d3$Hr==d_sten[i,]$Hr,]))))
+  
+   print(i)
+  }
+d_sten<-out
+
+d_sten<-d_sten[d_sten$count!=0,]
+
+dat$t1<-strptime(dat$Time ,"%H:%M:%S", "GMT")
+d_batlarge$t1<-strptime(paste(d_batlarge$Hr, ":00:00", sep="") ,"%H:%M:%S", "GMT")
+d_sten$t1<-strptime(paste(d_sten$Hr, ":00:00", sep="") ,"%H:%M:%S", "GMT")
+
+d_st<-d_sten[d_sten$varib=="n_start",]
+d_st$t2<-strptime(paste(d_st$Hr-1, ":45:00", sep="") ,"%H:%M:%S", "GMT")
+
+d_ed<-d_sten[d_sten$varib=="n_end",]
+d_ed$t2<-strptime(paste(d_ed$Hr, ":15:00", sep="") ,"%H:%M:%S", "GMT")
+
+g<-ggplot()
+g+geom_col(data=d_batlarge, aes(x=t1, y=trip_id_perc))+
+  geom_density(data=dat[dat$hmm_all_trips3==2,], aes(x=t1, (..scaled..)*100), linetype=1, position="identity")+
+  geom_point(data=d_st, aes(x=t2, y=count*3), shape=1, size=2)+
+  geom_point(data=d_ed, aes(x=t2, y=count*3), shape=2, size=2)+
+  scale_x_datetime(breaks=date_breaks("1 hour"), labels=date_format("%H"),
+                   limits=c(as.POSIXct(strptime("04:30:00" ,"%H:%M:%S", "GMT"), "GMT"),
+                  as.POSIXct(strptime("20:45:00" ,"%H:%M:%S", "GMT"), "GMT")))+
+    theme_classic()+
+  facet_grid(Sex~.)
+
+gf<-g+geom_col(data=d_batlarge[d_batlarge$Sex=="F",], aes(x=t1, y=trip_id_perc))+
+  geom_density(data=dat[dat$hmm_all_trips3==2 & dat$Sex=="F",], aes(x=t1, (..scaled..)*100), linetype=1, position="identity", trim=T)+
+  geom_point(data=d_st[d_st$Sex=="F",], aes(x=t2, y=count*3.5), shape=16, size=3)+
+  geom_point(data=d_ed[d_ed$Sex=="F",], aes(x=t2, y=count*3.5), shape=17, size=3)+
+  scale_x_datetime(breaks=date_breaks("1 hour"), labels=date_format("%H"),
+                   limits=c(as.POSIXct(strptime("04:30:00" ,"%H:%M:%S", "GMT"), "GMT"),
+                            as.POSIXct(strptime("20:30:00" ,"%H:%M:%S", "GMT"), "GMT")))+
+  ylab("Birds at large (%)")+xlab("Hour")+
+  theme_classic()+geom_text(aes(x=as.POSIXct(strptime("04:30:00" ,"%H:%M:%S", "GMT"), "GMT"), y=95, label="A."), size=12)+
+  theme(axis.title.y = element_text(size = rel(1.8), angle = 90))+
+  theme(axis.title.x = element_text(size = rel(1.8), angle = 00))+
+  theme(axis.text.x = element_text( size=13))+
+  theme(axis.text.y = element_text( size=13))
+
+gm<-g+geom_col(data=d_batlarge[d_batlarge$Sex=="M",], aes(x=t1, y=trip_id_perc))+
+  geom_density(data=dat[dat$hmm_all_trips3==2 & dat$Sex=="M",], aes(x=t1, (..scaled..)*100), linetype=1, position="identity", trim=T)+
+  geom_point(data=d_st[d_st$Sex=="M",], aes(x=t2, y=count*3.5), shape=16, size=3)+
+  geom_point(data=d_ed[d_ed$Sex=="M",], aes(x=t2, y=count*3.5), shape=17, size=3)+
+  scale_x_datetime(breaks=date_breaks("1 hour"), labels=date_format("%H"),
+                   limits=c(as.POSIXct(strptime("04:30:00" ,"%H:%M:%S", "GMT"), "GMT"),
+                            as.POSIXct(strptime("20:30:00" ,"%H:%M:%S", "GMT"), "GMT")))+
+  ylab("Birds at large (%)")+xlab("Hour")+
+  theme_classic()+geom_text(aes(x=as.POSIXct(strptime("04:30:00" ,"%H:%M:%S", "GMT"), "GMT"), y=95, label="B."), size=12)+
+  theme(axis.title.y = element_text(size = rel(1.8), angle = 90))+
+  theme(axis.title.x = element_text(size = rel(1.8), angle = 00))+
+  theme(axis.text.x = element_text( size=13))+
+  theme(axis.text.y = element_text( size=13))
+
+library(gridExtra)
+jpeg("~/grive/phd/writeup/Raine_BRBO/activityplots.jpg", width =11.69 , height =8.27 , units ="in", res =300)
+#A4 size
+grid.arrange(gf, gm, ncol=1, nrow=2)
+dev.off()
+
+### time each species spends at nest ###
+
+
+setwd("~/grive/phd/analyses/BRBO_raine")
+
+dat<-read.csv("~/grive/phd/analyses/BRBO_raine/BRBO_raine_hmm.csv", h=T)
+
+dat<-dat[dat$Returns!="N",]
+
+dat$Hr<-as.numeric(substr(dat$Time, 1,2))
+
+dat$DateTime<-as.POSIXct(strptime(dat$DateTime, "%Y-%m-%d %H:%M:%S"), "GMT")
+
+c_times<-NULL
+for( i in unique(dat$TrackID))
+ {
+ out<-data.frame(dat[dat$TrackID==i,][which(diff(dat[dat$TrackID==i,]$DateTime)>1000),],
+                  t_c_diff=diff(dat[dat$TrackID==i,]$DateTime)[which(diff(dat[dat$TrackID==i,]$DateTime)>1000)])
+ c_times<-rbind(c_times, out)
+ print(i)
+ }
+
+c_times$t_c_diff2<-c_times$t_c_diff/3600
+
+library(ggplot2)
+g<-ggplot(data=c_times, aes(x=t_c_diff2, colour=Sex))
+g+geom_histogram(position="dodge", bins=10)
+
+# ok cool but we can do one better 
