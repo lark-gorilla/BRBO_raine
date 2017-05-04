@@ -374,3 +374,25 @@ write.csv(d1, "BRBO_m4d_model_predictions.csv", quote=F, row.names=F)
 #     3           6-9 hr    3.5-5.2 hr
 #     4           9-12 hr   5.2-7 hr
 
+# another attempt
+
+regurg_assn<-read.csv("BRBO_regurg_times_assigned.csv", h=T)
+library(lme4)
+library(lmerTest)
+tdiff_assn
+m4d<-lmer(Digestion.code~-1+tdiff_assn:Species+(1|trip_id), 
+        data=regurg_assn)
+#sum(resid(m4d, type="pearson")^2)/df.residual(m4d)
+summary(m4d)
+AIC(m4d, m4c)
+lsmeansLT(m4d, test.effs="tdiff_assn:Species")
+anova(m4d)
+
+nd<-expand.grid(tdiff_assn_no4=seq(0,14,0.2), Species=c("S","FF"))
+d1<-data.frame(pred=predict(m4d, newdata=nd, interval="confidence",type="response"), nd)
+
+p<-ggplot(data=d1, aes(x=tdiff_assn_no4))
+p+geom_point(data=unique_regurg_assn, aes(y=Digestion.code, x=tdiff_assn_no4,colour=trip_id, shape=Species))+
+  geom_line(data=d1, aes(x=tdiff_assn_no4, y=pred.fit, linetype=Species))+
+  geom_ribbon(data=d1, aes(x=tdiff_assn_no4, ymin=pred.lwr, ymax=pred.upr, fill=Species), alpha=0.5)+
+  scale_x_continuous(breaks=0:14)+scale_y_continuous(breaks=0:4)

@@ -370,8 +370,8 @@ for(j in c(99,75,50,25))
 {
   #heron_old$ID<-j
   dat$ID<-j
-  UD_out<-batchUD(dat[with(dat, hmm_all_trips3==2 & Sex=='M'),],
-                  Scale = 2, UDLev = j)
+  UD_out<-batchUD(dat[with(dat, hmm_all_trips3!=3 & Sex=='F'),],
+                  Scale = 5, UDLev = j)
   
   if(j==99){all_UDs<-UD_out}else{all_UDs<-spRbind(all_UDs, UD_out)}
   
@@ -384,7 +384,7 @@ all_UDs <- spTransform(all_UDs, CRS=CRS("+proj=longlat +ellps=WGS84"))
 plot(all_UDs, border=factor(all_UDs$id), lwd=2)
 
 setwd("~/grive/phd/analyses/BRBO_raine")
-writeOGR(all_UDs, layer="BRBO_male_forage2km", dsn="GIS", driver="ESRI Shapefile", verbose=TRUE, overwrite=T)
+writeOGR(all_UDs, layer="BRBO_female_forgrest5km", dsn="GIS", driver="ESRI Shapefile", verbose=TRUE, overwrite=T)
 
 #birdlife approach
 dat$ID<-dat$trip_id
@@ -475,8 +475,8 @@ gf<-g+geom_col(data=d_batlarge[d_batlarge$Sex=="F",], aes(x=t1, y=trip_id_perc))
   scale_x_datetime(breaks=date_breaks("1 hour"), labels=date_format("%H"),
                    limits=c(as.POSIXct(strptime("04:30:00" ,"%H:%M:%S", "GMT"), "GMT"),
                             as.POSIXct(strptime("20:30:00" ,"%H:%M:%S", "GMT"), "GMT")))+
-  ylab("Birds at large (%)")+xlab("Hour")+
-  theme_classic()+geom_text(aes(x=as.POSIXct(strptime("04:30:00" ,"%H:%M:%S", "GMT"), "GMT"), y=95, label="A."), size=12)+
+  ylab("Trips at-sea (%)")+xlab("Hour")+
+  theme_classic()+geom_text(aes(x=as.POSIXct(strptime("04:30:00" ,"%H:%M:%S", "GMT"), "GMT"), y=95, label="a"), size=12)+
   theme(axis.title.y = element_text(size = rel(1.8), angle = 90))+
   theme(axis.title.x = element_text(size = rel(1.8), angle = 00))+
   theme(axis.text.x = element_text( size=13))+
@@ -489,18 +489,133 @@ gm<-g+geom_col(data=d_batlarge[d_batlarge$Sex=="M",], aes(x=t1, y=trip_id_perc))
   scale_x_datetime(breaks=date_breaks("1 hour"), labels=date_format("%H"),
                    limits=c(as.POSIXct(strptime("04:30:00" ,"%H:%M:%S", "GMT"), "GMT"),
                             as.POSIXct(strptime("20:30:00" ,"%H:%M:%S", "GMT"), "GMT")))+
-  ylab("Birds at large (%)")+xlab("Hour")+
-  theme_classic()+geom_text(aes(x=as.POSIXct(strptime("04:30:00" ,"%H:%M:%S", "GMT"), "GMT"), y=95, label="B."), size=12)+
+  ylab("Trips at-sea (%)")+xlab("Hour")+
+  theme_classic()+geom_text(aes(x=as.POSIXct(strptime("04:30:00" ,"%H:%M:%S", "GMT"), "GMT"), y=95, label="b"), size=12)+
   theme(axis.title.y = element_text(size = rel(1.8), angle = 90))+
   theme(axis.title.x = element_text(size = rel(1.8), angle = 00))+
   theme(axis.text.x = element_text( size=13))+
   theme(axis.text.y = element_text( size=13))
 
 library(gridExtra)
-jpeg("~/grive/phd/writeup/Raine_BRBO/activityplots.jpg", width =11.69 , height =8.27 , units ="in", res =300)
+jpeg("~/grive/phd/writeup/Raine_BRBO/activityplots3.jpg", width =11.69 , height =8.27 , units ="in", res =300)
 #A4 size
 grid.arrange(gf, gm, ncol=1, nrow=2)
 dev.off()
+
+# do some stats
+
+qplot(data=d_batlarge[d_batlarge$Hr<13,], x=Sex, y=trip_id_perc, geom="boxplot")
+
+hist(d_batlarge[d_batlarge$Hr<13,]$trip_id_perc) # use glm?
+
+summary(lm(trip_id_perc~Sex, data=d_batlarge[d_batlarge$Hr<13,]))
+
+glm1<-glm(cbind(trip_id_perc, 100-trip_id_perc)~Sex, data=d_batlarge[d_batlarge$Hr<13,], family="quasibinomial")
+sum((resid(glm1, type="pearson")^2))/df.residual(glm1)
+drop1(glm1, test="LRT")
+
+qplot(data=d_batlarge[d_batlarge$Hr>12,], x=Sex, y=trip_id_perc, geom="boxplot")
+
+glm2<-glm(cbind(trip_id_perc, 100-trip_id_perc)~Sex, data=d_batlarge[d_batlarge$Hr>12,], family="quasibinomial")
+sum((resid(glm2, type="pearson")^2))/df.residual(glm2)
+drop1(glm2, test="LRT")
+
+
+glm1<-glm(cbind(trip_id_perc, 100-trip_id_perc)~Sex, data=d_batlarge[d_batlarge$Hr %in% seq(8,12),], family="binomial")
+sum((resid(glm1, type="pearson")^2))/df.residual(glm1)
+drop1(glm1, test="LRT")
+
+qplot(data=d_batlarge[d_batlarge$Hr>12,], x=Sex, y=trip_id_perc, geom="boxplot")
+
+glm2<-glm(cbind(trip_id_perc, 100-trip_id_perc)~Sex, data=d_batlarge[d_batlarge$Hr %in% seq(13,17),], family="binomial")
+sum((resid(glm2, type="pearson")^2))/df.residual(glm2)
+drop1(glm2, test="LRT")
+
+# lets do stats within each sex instead of comparing M vs F
+d_batlarge$AMPM<-"AM"
+d_batlarge[d_batlarge$Hr>12,]$AMPM<-"PM"
+
+qplot(data=d_batlarge, x=AMPM, y=trip_id_perc, colour=Sex, geom="boxplot")
+
+glm1<-glm(cbind(trip_id_perc, 100-trip_id_perc)~AMPM,
+          data=d_batlarge[d_batlarge$Sex=="F",], family="quasibinomial")
+sum((resid(glm1, type="pearson")^2))/df.residual(glm1)
+summary(glm1)
+drop1(glm1, test="F") # F most appropriate for quasi
+lsmeans(glm1, specs="AMPM", transform="response")
+
+
+glm1<-glm(cbind(trip_id_perc, 100-trip_id_perc)~AMPM,
+          data=d_batlarge[d_batlarge$Sex=="M",], family="quasibinomial")
+sum((resid(glm1, type="pearson")^2))/df.residual(glm1)
+summary(glm1)
+drop1(glm1, test="F") # F most appropriate for quasi
+lsmeans(glm1, specs="AMPM", transform="response")
+
+mean(d_batlarge[d_batlarge$Sex=="M" &
+                  d_batlarge$AMPM=="AM",]$trip_id_perc)
+sd(d_batlarge[d_batlarge$Sex=="M" &
+                  d_batlarge$AMPM=="AM",]$trip_id_perc)
+mean(d_batlarge[d_batlarge$Sex=="M" &
+                  d_batlarge$AMPM=="PM",]$trip_id_perc)
+sd(d_batlarge[d_batlarge$Sex=="M" &
+                d_batlarge$AMPM=="PM",]$trip_id_perc)
+
+mean(d_batlarge[d_batlarge$Sex=="F" &
+                  d_batlarge$AMPM=="AM",]$trip_id_perc)
+sd(d_batlarge[d_batlarge$Sex=="F" &
+                d_batlarge$AMPM=="AM",]$trip_id_perc)
+mean(d_batlarge[d_batlarge$Sex=="F" &
+                  d_batlarge$AMPM=="PM",]$trip_id_perc)
+sd(d_batlarge[d_batlarge$Sex=="F" &
+                d_batlarge$AMPM=="PM",]$trip_id_perc)
+
+# departure and arrival time
+
+summary(lm(Hr~Sex, data=d2))
+drop1(lm(Hr~Sex, data=d2), test="F")
+
+summary(lm(Hr~Sex, data=d3))
+drop1(lm(Hr~Sex, data=d3), test="F")
+
+mean(d2[d2$Sex=="M",]$Hr)
+sd(d2[d2$Sex=="M",]$Hr)
+mean(d2[d2$Sex=="F",]$Hr)
+sd(d2[d2$Sex=="F",]$Hr)
+
+mean(d3[d3$Sex=="M",]$Hr)
+sd(d3[d3$Sex=="M",]$Hr)
+mean(d3[d3$Sex=="F",]$Hr)
+sd(d3[d3$Sex=="F",]$Hr)
+
+# foraging time
+dat$AMPM<-"AM"
+dat[dat$Hr>12,]$AMPM<-"PM"
+
+dat2<-aggregate(hmm_all_trips2~Hr+AMPM+Sex, dat[dat$hmm_all_trips3==2,], FUN=function(x){length(x)})
+
+qplot(data=dat2, y=hmm_all_trips2, x=AMPM, colour=Sex, geom="boxplot")
+
+summary(lm(hmm_all_trips2~AMPM, data=dat2[dat2$Sex=="F",]))
+drop1(lm(hmm_all_trips2~AMPM, data=dat2[dat2$Sex=="F",]), test="F")
+
+summary(lm(hmm_all_trips2~AMPM, data=dat2[dat2$Sex=="M",]))
+drop1(lm(hmm_all_trips2~AMPM, data=dat2[dat2$Sex=="M",]), test="F")
+
+mean(dat2[dat2$AMPM=="AM" & dat2$Sex=="F",]$hmm_all_trips2)
+sd(dat2[dat2$AMPM=="AM" & dat2$Sex=="F",]$hmm_all_trips2)
+mean(dat2[dat2$AMPM=="PM" & dat2$Sex=="F",]$hmm_all_trips2)
+sd(dat2[dat2$AMPM=="PM" & dat2$Sex=="F",]$hmm_all_trips2)
+
+mean(dat2[dat2$AMPM=="AM" & dat2$Sex=="M",]$hmm_all_trips2)
+sd(dat2[dat2$AMPM=="AM" & dat2$Sex=="M",]$hmm_all_trips2)
+mean(dat2[dat2$AMPM=="PM" & dat2$Sex=="M",]$hmm_all_trips2)
+sd(dat2[dat2$AMPM=="PM" & dat2$Sex=="M",]$hmm_all_trips2)
+
+
+
+
+
 
 ### time each species spends at nest ###
 
@@ -518,16 +633,87 @@ dat$DateTime<-as.POSIXct(strptime(dat$DateTime, "%Y-%m-%d %H:%M:%S"), "GMT")
 c_times<-NULL
 for( i in unique(dat$TrackID))
  {
- out<-data.frame(dat[dat$TrackID==i,][which(diff(dat[dat$TrackID==i,]$DateTime)>1000),],
-                  t_c_diff=diff(dat[dat$TrackID==i,]$DateTime)[which(diff(dat[dat$TrackID==i,]$DateTime)>1000)])
+ out<-data.frame(dat[dat$TrackID==i,][which(diff(dat[dat$TrackID==i,]$DateTime)>2000),],
+                  t_c_diff=diff(dat[dat$TrackID==i,]$DateTime)[which(diff(dat[dat$TrackID==i,]$DateTime)>2000)])
  c_times<-rbind(c_times, out)
+
  print(i)
  }
 
-c_times$t_c_diff2<-c_times$t_c_diff/3600
+c_times$t_c_diff2<-as.numeric(c_times$t_c_diff/3600)
 
 library(ggplot2)
 g<-ggplot(data=c_times, aes(x=t_c_diff2, colour=Sex))
-g+geom_histogram(position="dodge", bins=10)
+g+geom_histogram(position="dodge", binwidth=1)
+# ok so there are male day trips an both do overnighters,
+# Males do long overnighters and into day
 
-# ok cool but we can do one better 
+g<-ggplot(data=c_times[c_times$ Hr>16,], aes(x=t_c_diff2, colour=Sex))
+g+geom_histogram(position="dodge", binwidth=1)
+
+g<-ggplot(data=c_times, aes(x=t_c_diff2, colour=Sex))
+g+geom_histogram(position="dodge", binwidth=1)+facet_wrap(~TrackID)
+
+
+g<-ggplot(data=c_times[c_times$t_c_diff2>8,], aes(y=as.numeric(t_c_diff2), x=Sex))
+g+geom_boxplot(position="dodge")
+
+# not significant, check other variables: Date, chick cond, Ad weight, not indiv bird as lmer
+#write.csv(c_times, "BRBO_time_at_col.csv", quote=F, row.names=F)
+# read back in with vlookedup fields
+rm(list=ls())
+c_times<-read.csv("BRBO_time_at_col.csv", h=T)
+library(lme4)
+library(lmerTest) # gives p values (credibly?) and makes anova 
+# give F values and Pr(>F) for lmers
+
+#summary(lm(t_c_diff2~Sex, c_times[c_times$t_c_diff2>8,]))
+
+lmer1<-lmer(t_c_diff2~Sex+(1|ID), c_times[c_times$t_c_diff2>8,])
+summary(lmer1)
+anova(lmer1)
+lsmeansLT(lmer1, test.effs="Sex")
+
+###
+qplot(data=c_times[c_times$t_c_diff2>8,], y=t_c_diff2, x=adweight)
+
+lmer1<-lmer(t_c_diff2~adweight+(1|ID), c_times[c_times$t_c_diff2>8,])
+summary(lmer1)
+anova(lmer1)
+lsmeansLT(lmer1, test.effs="adweight")
+
+###
+qplot(data=c_times[c_times$t_c_diff2>8,], y=t_c_diff2, x=Date)
+
+lmer1<-lmer(t_c_diff2~Date+(1|ID), c_times[c_times$t_c_diff2>8,])
+summary(lmer1)
+anova(lmer1)
+lsmeansLT(lmer1, test.effs="Date")
+
+###
+qplot(data=c_times[c_times$t_c_diff2>8,], y=t_c_diff2, x=ckcond)
+
+lmer1<-lmer(t_c_diff2~ckcond+(1|ID), c_times[c_times$t_c_diff2>8,])
+summary(lmer1)
+anova(lmer1)
+lsmeansLT(lmer1, test.effs="ckcond")
+
+# One more check of amount of prey (numbers) brought back (after chick feed)
+
+d1<-read.csv("regurgitations_with_timestamp.csv", h=T)
+
+d2<-aggregate(Species~Sample.ID+Sex, d1[d1$Species=="FF",], FUN=function(x){length(x)})
+
+mean(d2[d2$Sex=="female",]$Species)
+sd(d2[d2$Sex=="female",]$Species)
+
+mean(d2[d2$Sex=="male",]$Species)
+sd(d2[d2$Sex=="male",]$Species)
+
+d2<-aggregate(Species~Sample.ID+Sex, d1[d1$Species=="S",], FUN=function(x){length(x)})
+
+mean(d2[d2$Sex=="female",]$Species)
+sd(d2[d2$Sex=="female",]$Species)
+
+mean(d2[d2$Sex=="male",]$Species)
+sd(d2[d2$Sex=="male",]$Species)
