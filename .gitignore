@@ -1,1 +1,8 @@
 .Rproj.user
+.RData
+dat_and_pca.csv
+pca_out.csv
+response_codes.csv
+.Rhistory
+response_codes2.csv
+gannet_dive_kernel_interp.R
