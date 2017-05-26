@@ -1,0 +1,114 @@
+---
+title: "gannet_nutrients"
+author: "MM"
+date: "9 May 2017"
+output: html_document
+---
+
+
+
+```{r, echo=FALSE}
+rm(list=ls())
+library(rgdal)
+source("~/grive/phd/scripts/github_MIBA/batchUD.R")
+
+
+#get gannet full year kernels
+setwd("~/research/gannets/GIS")
+full2012<-readOGR(dsn="allbirds_2012_divesonly_5km.shp",layer="allbirds_2012_divesonly_5km")
+full2015<-readOGR(dsn="allbirds_2015_divesonly_5km.shp",layer="allbirds_2015_divesonly_5km")
+full2016<-readOGR(dsn="allbirds_2016_divesonly_5km.shp",layer="allbirds_2016_divesonly_5km")
+
+setwd("~/research/gannets")
+dat<-read.csv("sel_trax_regurg_diveONLY_3_8_sec_loc_nprey.csv", h=T)
+
+dat_kern=batchUD(dat, Scale=5, UDLev=50)
+dat_kern <- spTransform(dat_kern, CRS=CRS("+proj=longlat +ellps=WGS84"))
+
+nut<-read.csv("prey_nutrient_lookup.csv", h=T)
+
+dat_kern@data<-cbind(dat_kern@data, nut[match(dat_kern@data$id, nut$ID),])
+
+library(raster)
+
+r1<-raster(extent(full2015), resolution=0.01, crs=CRS("+proj=longlat +ellps=WGS84"), vals=0)
+
+f2012<-rasterize(dat_kern[dat_kern$year_season=="2012",], r1, field="Fat",fun="mean")
+p2012<-rasterize(dat_kern[dat_kern$year_season=="2012",], r1, field="Protein",fun="mean")
+w2012<-rasterize(dat_kern[dat_kern$year_season=="2012",], r1, field="Water",fun="mean")
+a2012<-rasterize(dat_kern[dat_kern$year_season=="2012",], r1, field="Ash",fun="mean")
+pf2012<-rasterize(dat_kern[dat_kern$year_season=="2012",], r1, field="P_F_ratio",fun="mean")
+fw2012<-rasterize(dat_kern[dat_kern$year_season=="2012",], r1, field="F_W_ratio",fun="mean")
+
+
+f2015<-rasterize(dat_kern[dat_kern$year_season=="2015",], r1, field="Fat",fun="mean")
+p2015<-rasterize(dat_kern[dat_kern$year_season=="2015",], r1, field="Protein",fun="mean")
+w2015<-rasterize(dat_kern[dat_kern$year_season=="2015",], r1, field="Water",fun="mean")
+a2015<-rasterize(dat_kern[dat_kern$year_season=="2015",], r1, field="Ash",fun="mean")
+pf2015<-rasterize(dat_kern[dat_kern$year_season=="2015",], r1, field="P_F_ratio",fun="mean")
+fw2015<-rasterize(dat_kern[dat_kern$year_season=="2015",], r1, field="F_W_ratio",fun="mean")
+
+
+
+
+
+f2016<-rasterize(dat_kern[dat_kern$year_season=="2016",], r1, field="Fat",fun="mean")
+p2016<-rasterize(dat_kern[dat_kern$year_season=="2016",], r1, field="Protein",fun="mean")
+w2016<-rasterize(dat_kern[dat_kern$year_season=="2016",], r1, field="Water",fun="mean")
+a2016<-rasterize(dat_kern[dat_kern$year_season=="2016",], r1, field="Ash",fun="mean")
+pf2016<-rasterize(dat_kern[dat_kern$year_season=="2016",], r1, field="P_F_ratio",fun="mean")
+fw2016<-rasterize(dat_kern[dat_kern$year_season=="2016",], r1, field="F_W_ratio",fun="mean")
+
+# all years
+pf_all<-rasterize(dat_kern, r1, field="P_F_ratio",fun="mean")
+fw_all<-rasterize(dat_kern, r1, field="F_W_ratio",fun="mean")
+
+
+
+
+
+setwd("~/grive/phd/sourced_data/env_data/hires_global_coastline")
+bathy<-readOGR(dsn="ne_10m_coastline.shp", layer="ne_10m_coastline") #twatty readOGR
+#bathy <- spTransform(bathy, CRS=CRS("+proj=longlat +ellps=WGS84"))
+b1<-crop(bathy, extent(full2015))
+
+library(rasterVis)
+
+
+rastz<-stack(f2012, p2012, w2012, a2012,pf2012, fw2012,
+         f2015, p2015, w2015, a2015,pf2015, fw2015,
+         f2016, p2016, w2016, a2016, pf2016, fw2016, pf_all, fw_all)
+
+namez<-c("Fat 2012", "Protein 2012", "Water 2012", "Ash 2012","P:F 2012", "F:W 2012",
+         "Fat 2015", "Protein 2015", "Water 2015", "Ash 2015","P:F 2015", "F:W 2015",
+         "Fat 2016", "Protein 2016", "Water 2016", "Ash 2016","P:F 2016", "F:W 2016", "P:F ALL YEARS", "F:W ALL YEARS")
+
+for(i in 1:18)
+{
+  x1<-raster(rastz, layer=i)
+myTheme=rasterTheme(region=brewer.pal('Spectral', n=nrow(levels(ratify(f2016))[[1]])))
+ratty<-ratify(x1)
+if(i %in% 1:6){kern=full2012}
+if(i %in% 7:12){kern=full2015}
+if(i %in% 13:18){kern=full2016}
+print(levelplot(ratty,att="ID",par.settings=myTheme,
+                    main=namez[i])+layer(sp.lines(b1))+
+                    layer(sp.lines(kern[1,], col=3))+
+                    layer(sp.lines(kern[3,], col=2)))
+}
+
+# orginal loop
+#for(i in 1:20)
+#{
+#  x1<-raster(rastz, layer=i)
+#myTheme=rasterTheme(region=brewer.pal('Spectral', #n=nrow(levels(ratify(f2016))[[1]])))
+#ratty<-ratify(x1)
+#print(levelplot(ratty,att="ID",par.settings=myTheme,
+#                    main=namez[i])+layer(sp.lines(b1)))
+#}
+
+
+
+
+
+```
