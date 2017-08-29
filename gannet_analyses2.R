@@ -70,13 +70,28 @@ for(i in d_2016)
   dat_2016<-rbind(dat_2016, d1)
 }
 
+# Extra data from Gabriel
+
+extrA<-list.files("data/extra_data")
+extrA<-extrA[grep("csv", extrA)]
+
+dat_ext<-NULL
+for(i in extrA)
+{
+  d1<-read.csv(paste("data/extra_data/", i, sep=""), h=F)
+  d1$ID<-substr(i, 1, nchar(i)-4)
+  dat_ext<-rbind(dat_ext, d1)
+}
 
 # data in, now to compile and format into master need: ID, DateTime, Lat, Long, year
 
-dfor2012<-data.frame(Date=as.Date(dat_2012$V14, format="%d.%m.%Y"), 
-                      Time=dat_2012$V16, Latitude=dat_2012$V7, 
-                     Longitude=dat_2012$V6, ID=dat_2012$ID, year=2012)
-# 2012 datetime still in UTC??
+ext_clean<-data.frame(Date=as.Date(dat_ext$V4, format="%Y/%m/%d"), 
+                      Time=substr(dat_ext$V5, 1, 8), Latitude=as.numeric(paste("-", dat_ext$V6, sep="")), 
+                     Longitude=dat_ext$V8, ID=dat_ext$ID, year=substr(dat_ext$V4, 1,4))
+# remove badpoints
+ext_clean<-ext_clean[ext_clean$Longitude>170,]
+
+plot(Latitude~Longitude, ext_clean, pch=16, cex=0.5, col=ID)
                                   
 dfor2014<-data.frame(Date=as.Date(dat_2014$V4, format="%Y/%m/%d"), 
                      Time=substr(dat_2014$V5, 1, 8), Latitude=-dat_2014$V6, 
@@ -91,6 +106,14 @@ dat<-rbind(dfor2012, dfor2014, dfor2016)
 write.csv(dat, "gannet_data_12_14_16_compiled.csv", row.names=F, quote=F)
 
 dat<-read.csv("gannet_data_12_14_16_compiled.csv", h=T)
+dat$Date=as.Date(dat$Date, format="%Y-%m-%d")
+ext_clean$year<-as.character(ext_clean$year)
+
+dat<-rbind(dat, ext_clean)
+dat_ord<-dat[order(dat$ID, dat$year),]
+
+write.csv(dat_ord, "gannet_data_12_14_16_update_compiled.csv", row.names=F, quote=F)
+
 
 #kill crafty lat, long=0 points in 2012 data
 dat<-dat[dat$Latitude!=0,]
@@ -115,18 +138,21 @@ source("~/grive/phd/scripts/MIBA_scripts_revised/TripSplit_revised_MMLINUX.r")
 birds <-unique(dat$ID)
 table(dat$ID)
 
-for(i in birds[45:59])
+birds<-names(sort(table(dat$ID)))
+
+for(i in birds[2:length(birds)])
 {
   Temp <- dat[dat$ID==i,]
   
   rm(Trip)
   
-  Trip <- tripSplit(Track=Temp, Colony=col_nz, InnerBuff=0.1, ReturnBuff=0.15, Duration=0.25, plotit=T)
+  Trip <- tripSplit(Track=Temp, Colony=col_nz, InnerBuff=0.1, ReturnBuff=0.15, Duration=0.25, plotit=F)
   
-  if(which(birds==i) == 45) {Trips <- Trip} else
-    Trips <- spRbind(Trips,Trip)
+  write.csv(Trip@data, paste("temp/",i, ".csv", sep="" ), quote=F, row.names=F)
+  #if(which(birds==i) == 1) {Trips <- Trip} else
+  #  Trips <- spRbind(Trips,Trip)
   
-  print(Sys.time())
+  #print(Sys.time())
 
   #readline("")
 }
@@ -161,6 +187,10 @@ nrow(dat[dat$trip_id==-1,])
 
 dat<-dat[dat$trip_id!=-1,] # remove -1 points
 
+# Read in extra data
+#dat<-read.csv("Gabriel_extra_data_tripsplit.csv", h=T)
+# -1 already removed.
+
 #dive locations (gap>9 seconds)
 dat$TT_diff<-0
 for(i in unique(dat$trip_id)){
@@ -177,6 +207,12 @@ d1<-data.frame(aggregate(TT_diff~trip_id, dat, mean),
            dmin=aggregate(ColDist~trip_id, dat, min, na.rm=T)[,2],
            dmax=aggregate(ColDist~trip_id, dat, max, na.rm=T)[,2])
 
+# for extra dat
+dat<-dat[dat$trip_id %in% d1[d1$tmin==1,]$trip_id,]
+badz<-c("G46_C_2016-01-07 09-101", 
+        "G55_D_2016-01-07 09-101")
+
+dat<-dat[!dat$trip_id %in% badz,]
 
 #points(Latitude~Longitude, dat[dat$TT_diff>120,], col=3, cex=0.5, pch=3) # where are the > 120 gaps??
 
@@ -210,8 +246,18 @@ dat[grep("2016", dat$ID), ]$year<-2016
 
 dat$dive<-0
 
-dat[ dat$year=="2012" & dat$TT_diff%in% (3:8),]$dive<-1 #2012 is every 2 secs so bit different
-dat[ dat$year!="2012" & dat$TT_diff%in% (2:8),]$dive<-1
+#dat[ dat$year=="2012" & dat$TT_diff%in% (3:8),]$dive<-1 #2012 is every 2 secs so bit different
+#dat[ dat$year!="2012" & dat$TT_diff%in% (2:8),]$dive<-1
+
+dat[dat$TT_diff%in% (3:8),]$dive<-1
+
+dat$Vdive<-0
+dat$Udive<-0
+
+dat[dat$TT_diff%in% (3:9),]$Vdive<-1 #2012 is every 2 secs so bit different
+dat[dat$TT_diff%in% (10:20),]$Udive<-1
+
+
 
 write.csv(dat, "gannet_dat_tripsplit_dives_CORRECTED.csv", quote=F, row.names=F) # write full tripsplit dataset
 
@@ -224,7 +270,8 @@ trip_distances<-data.frame(tripID=unique(dat$trip_id), Returns="na",
                            tot_time=0, 
                            foraging_time=0, flying_time=0, resting_time=0,
                            dive_duration=0, dive_duration_sd=0,
-                           dives_per_hour=0)  	### create data frame for each trip
+                           dives_per_hour=0,Vdives_per_hour=0,
+                           Udives_per_hour=0)  	### create data frame for each trip
 
 trip_distances$Returns<-as.character(trip_distances$Returns)
 
@@ -249,6 +296,8 @@ for (i in trip_distances$trip){
   trip_distances[trip_distances$trip==i,9]<-mean(dat[dat$trip_id==i & dat$dive==1,]$TT_diff)
   trip_distances[trip_distances$trip==i,10]<-sd(dat[dat$trip_id==i & dat$dive==1,]$TT_diff)
   trip_distances[trip_distances$trip==i,11]<-(sum(dat[dat$trip_id==i,]$dive))/trip_distances[trip_distances$trip==i,5]
+  trip_distances[trip_distances$trip==i,12]<-(sum(dat[dat$trip_id==i,]$Vdive))/trip_distances[trip_distances$trip==i,5]
+  trip_distances[trip_distances$trip==i,13]<-(sum(dat[dat$trip_id==i,]$Udive))/trip_distances[trip_distances$trip==i,5]
   }
 
 write.csv(trip_distances, "gannet_dat_trip_summary.csv", quote=F, row.names=F) # write full tripsplit dataset
@@ -862,7 +911,7 @@ results$DateTime2 <- paste(results$DateGMT, results$TimeGMT, sep= " ")
 results$DateTime2 <- as.POSIXct(strptime(results$DateTime2, "%Y-%m-%d %H:%M:%S"), "GMT")
 results$TrackTime2 <- as.double(results$DateTime2)
 
-
+## 
 
 
 

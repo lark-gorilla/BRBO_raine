@@ -164,5 +164,16 @@ for(i in unique(trip_distances$tripID))
 
 write.csv(trip_distances, "~/grive/phd/analyses/BRBO_raine/BRBO_raine_summary.csv", quote=F, row.names=F) # write full tripsplit dataset
 
+# Add mean dist to col that foraging occured
+trip_distances<-read.csv("~/grive/phd/analyses/BRBO_raine/BRBO_raine_summary.csv", h=T)
 
+trip_distances$ave_dcol_foraging<-0
+
+for(i in trip_distances$tripID)
+{
+  trip_distances[trip_distances$tripID==i,]$ave_dcol_foraging<-
+    mean(dat[dat$trip_id==i & dat$hmm_all_trips3==2,]$ColDist)
+}
+
+write.csv(trip_distances, "~/grive/phd/analyses/BRBO_raine/BRBO_raine_summary.csv", quote=F, row.names=F) # write full tripsplit dataset
 

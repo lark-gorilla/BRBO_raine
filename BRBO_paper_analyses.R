@@ -7,6 +7,7 @@ setwd("~/grive/phd/analyses/BRBO_raine")
 
 dat<-read.csv("BRBO_raine_summary.csv", h=T)
 
+dat$ave_dcol_foraging<-dat$ave_dcol_foraging/1000
 dat$Date<-substr(dat$DateTime, 1,8)
 
 head(dat)
@@ -137,16 +138,29 @@ coef(summary(lm(flying_time~trackID, data=dat)))
 anova(lm(flying_time~trackID, data=dat))
 
 #resting_time
-coef(summary(lm(sqrt(resting_time)~Sex, data=dat)))
-anova(lm(sqrt(resting_time)~Sex, data=dat))
-coef(summary(lm(sqrt(resting_time)~adweight, data=dat)))
-anova(lm(sqrt(resting_time)~adweight, data=dat))
-coef(summary(lm(sqrt(resting_time)~ckcond, data=dat[dat$ckcond<2,])))
-anova(lm(sqrt(resting_time)~ckcond, data=dat[dat$ckcond<2,]))
-coef(summary(lm(sqrt(resting_time)~Date, data=dat)))
-anova(lm(sqrt(resting_time)~Date, data=dat))
-coef(summary(lm(sqrt(resting_time)~trackID, data=dat)))
-anova(lm(sqrt(resting_time)~trackID, data=dat))
+library(lmerTest) # gives p values (credibly?) and makes anova 
+# give F values and Pr(>F) for lmers
+coef(summary(lmer(sqrt(resting_time)~Sex+(1|trackID), data=dat)))
+anova(lmer(sqrt(resting_time)~Sex+(1|trackID), data=dat))
+coef(summary(lmer(sqrt(resting_time)~adweight+(1|trackID), data=dat)))
+anova(lmer(sqrt(resting_time)~adweight+(1|trackID), data=dat))
+coef(summary(lmer(sqrt(resting_time)~ckcond+(1|trackID), data=dat[dat$ckcond<2,])))
+anova(lmer(sqrt(resting_time)~ckcond+(1|trackID), data=dat[dat$ckcond<2,]))
+coef(summary(lmer(sqrt(resting_time)~Date+(1|trackID), data=dat)))
+anova(lmer(sqrt(resting_time)~Date+(1|trackID), data=dat))
+
+#mean foraging distance from col
+library(lmerTest) # gives p values (credibly?) and makes anova 
+# give F values and Pr(>F) for lmers
+coef(summary(lmer(ave_dcol_foraging~Sex+(1|trackID), data=dat)))
+anova(lmer(ave_dcol_foraging~Sex+(1|trackID), data=dat))
+coef(summary(lmer(ave_dcol_foraging~adweight+(1|trackID), data=dat)))
+anova(lmer(ave_dcol_foraging~adweight+(1|trackID), data=dat))
+coef(summary(lmer(ave_dcol_foraging~ckcond+(1|trackID), data=dat[dat$ckcond<2,])))
+anova(lmer(ave_dcol_foraging~ckcond+(1|trackID), data=dat[dat$ckcond<2,]))
+coef(summary(lmer(ave_dcol_foraging~Date+(1|trackID), data=dat)))
+anova(lmer(ave_dcol_foraging~Date+(1|trackID), data=dat))
+
 
 lsmeans(lm(max_dist~Sex, data=dat), "Sex")
 anova(lm(max_dist~Sex, data=dat))
@@ -158,8 +172,12 @@ lsmeans(lm(foraging_time~Sex, data=dat), "Sex")
 anova(lm(foraging_time~Sex, data=dat))
 lsmeans(lm(flying_time~Sex, data=dat), "Sex")
 anova(lm(flying_time~Sex, data=dat))
-lsmeans(lm(sqrt(resting_time)~Sex, data=dat), "Sex", transform="response")
-anova(lm(sqrt(resting_time)~Sex, data=dat))
+
+lsmeansLT(lmer(sqrt(resting_time)~Sex+(1|trackID), data=dat), test.effs="Sex", transform="response")
+anova(lmer(sqrt(resting_time)~Sex+(1|trackID), data=dat))
+
+lsmeansLT(lmer(ave_dcol_foraging~Sex+(1|trackID), data=dat), test.effs="Sex", transform="response")
+anova(lmer(ave_dcol_foraging~Sex+(1|trackID), data=dat))
 
 mean(dat$max_dist);sd(dat$max_dist)
 mean(dat$tot_length);sd(dat$tot_length)
@@ -167,9 +185,28 @@ mean(dat$tot_time);sd(dat$tot_time)
 mean(dat$foraging_time);sd(dat$foraging_time)
 mean(dat$flying_time);sd(dat$flying_time)
 mean(dat$resting_time);sd(dat$resting_time)
+mean(dat$ave_dcol_foraging);sd(dat$ave_dcol_foraging)
 
 p<-ggplot(data=dat, aes(x=hour, fill=Sex))
 p+geom_histogram(position="dodge")+scale_x_continuous(breaks=5:18)
+
+#bonferroni correction
+
+rawP<-c(anova(lm(max_dist~Sex, data=dat))$"Pr(>F)"[1],
+        anova(lm(tot_length~Sex, data=dat))$"Pr(>F)"[1],
+        anova(lm(tot_time~Sex, data=dat))$"Pr(>F)"[1],
+        anova(lm(foraging_time~Sex, data=dat))$"Pr(>F)"[1],
+        anova(lm(flying_time~Sex, data=dat))$"Pr(>F)"[1],
+        anova(lmer(sqrt(resting_time)~Sex+(1|trackID), data=dat))$"Pr(>F)"[1],
+        anova(lmer(ave_dcol_foraging~Sex+(1|trackID), data=dat))$"Pr(>F)"[1])
+        
+        
+p.adjust(rawP, method = "bonferroni")
+
+        
+
+
+
 
 # differences in adult morphometrics
 setwd("~/grive/phd/analyses/BRBO_raine")
@@ -202,6 +239,17 @@ aggregate(WingLength~Sex, dat, mean)
 aggregate(WingLength~Sex, dat, sd)
 qplot(data=dat, x=Sex, y=WingLength, geom="boxplot")
 t.test(WingLength~Sex, dat)
+
+# Adjusting p values as per reviewers comment
+
+rawP<-c(t.test(Weight~Sex, dat)$p.value,
+  t.test(Tarsus~Sex, dat)$p.value,
+  t.test(CulmenLength~Sex, dat)$p.value,
+  t.test(CulmenHeight~Sex, dat)$p.value,
+  t.test(WingLength~Sex, dat)$p.value)
+
+p.adjust(rawP, method = "bonferroni")
+
 
 # Prey capture location analysis
 rm(list=ls())
@@ -362,8 +410,17 @@ dat<-dat[dat$Returns!="N",]
 dat<-read.csv("~/grive/phd/analyses/BRBO_raine/BRBO_raine_hmm.csv", h=T)
 
 dat<-dat[dat$Returns!="N",]
+dat$ID<-factor(dat$ID)
 
 source("~/grive/phd/scripts/github_MIBA/batchUD.R")
+
+# find h value 
+source("~/grive/phd/scripts/MIBA_scripts_revised/scaleARS_revised.r")
+Scales <- 1:10
+dat$ID<-dat$trip_id
+Scales=(seq(0, 10, 0.5))
+fpt.scales=scaleARS(DataGroup=dat,Scales=Scales,Peak="Flexible")
+#fpt.scales=0.957
 
 
 for(j in c(99,75,50,25))
@@ -717,3 +774,36 @@ sd(d2[d2$Sex=="female",]$Species)
 
 mean(d2[d2$Sex=="male",]$Species)
 sd(d2[d2$Sex=="male",]$Species)
+
+# have a quick look at wind
+d1<-read.csv("raine_wind.csv", skip=50, h=T)
+
+qplot(data=d1, x=time, y=Minimum.Wind.Speed.30.Minutes.Raine.Island.Platform.Since.9AM.UTC_LEVEL1_value_AVG,
+          geom="line")
+
+qplot(data=d1, x=time, y=Wind.Direction..Vector.Average.30.Minutes..Raine.Island.Platform_LEVEL1_value_AVG,
+      geom="line")
+
+# Compare synchronicity of double tracked pairs.
+setwd("~/grive/phd/analyses/BRBO_raine")
+
+dat<-read.csv("~/grive/phd/fieldwork/Raine_Dec_2014/data/tracking_results/Raine_tracking_trips_clean.csv", h=T)
+
+d1<-dat[dat$NestID=="17Z" |dat$NestID=="18Z"|dat$NestID=="19A",]
+d1$DateTime<-as.POSIXct(strptime(d1$DateTime, "%Y-%m-%d %H:%M:%S"), "GMT")
+
+p<-ggplot(data=d1, aes(x=DateTime, y=ColDist, colour=Sex, linetype=NestID))
+
+p+geom_line()+
+  scale_x_datetime(breaks=date_breaks("4 hour"), labels=date_format("%H"))+
+  facet_grid(.~NestID~.)
+
+d1<-dat[dat$NestID=="17Z",]
+d1$DateTime<-as.POSIXct(strptime(d1$DateTime, "%Y-%m-%d %H:%M:%S"), "GMT")
+
+
+p<-ggplot(data=d1, aes(x=DateTime, y=ColDist, colour=Sex))
+
+p+geom_line()+
+  scale_x_datetime(breaks=date_breaks("2 hour"), labels=date_format("%H"))
+
